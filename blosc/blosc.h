@@ -427,7 +427,8 @@ typedef struct {
   uint8_t version;
   uint8_t flags1;
   uint8_t flags2;
-  uint8_t flags3;
+  uint8_t thread_safe;
+  /* whether super-chunk can safely be accessed from several threads or not (1; meaning thread safe) */
   uint16_t compressor;
   /* The default compressor.  Each chunk can override this. */
   uint16_t clevel;
@@ -462,6 +463,8 @@ typedef struct {
 
 
 typedef struct {
+  uint8_t thread_safe;
+  /* whether super-chunk can safely be accessed from several threads or not (1; meaning thread safe) */
   uint8_t compressor;
   /* the default compressor */
   uint8_t clevel;
@@ -473,12 +476,12 @@ typedef struct {
 
 /* Default struct for schunk params meant for user initialization */
 static const blosc2_sparams BLOSC_SPARAMS_DEFAULTS = \
-  { BLOSC_ZSTD, 5, {BLOSC_SHUFFLE, 0, 0, 0, 0}, 0 };
+  { 1, BLOSC_ZSTD, 5, {BLOSC_SHUFFLE, 0, 0, 0, 0}, 0 };
 
 /* Create a new super-chunk. */
 BLOSC_EXPORT blosc2_sheader* blosc2_new_schunk(blosc2_sparams* sparams);
 
-/* Set a delta reference for the super-chunk */
+/* Set a delta reference for the super-chunk. */
 BLOSC_EXPORT int blosc2_set_delta_ref(blosc2_sheader* sheader,
     size_t typesize, size_t nbytes, void* ref);
 
@@ -518,7 +521,7 @@ BLOSC_EXPORT int blosc2_packed_decompress_chunk(void* packed, int nchunk,
 /* Pack a super-chunk by using the header. */
 BLOSC_EXPORT void* blosc2_pack_schunk(blosc2_sheader* sheader);
 
-/* Unpack a packed super-chunk */
+/* Unpack a packed super-chunk. */
 BLOSC_EXPORT blosc2_sheader* blosc2_unpack_schunk(void* packed);
 
 
@@ -556,7 +559,6 @@ typedef struct {
 /* Default struct for compression params meant for user initialization */
 static const blosc2_context_cparams BLOSC_CPARAMS_DEFAULTS = \
   { 8, BLOSC_BLOSCLZ, 5, BLOSC_SHUFFLE, 1, 0, NULL };
-
 
 /**
   The parameters for creating a context for decompression purposes.
@@ -615,7 +617,6 @@ BLOSC_EXPORT void blosc2_free_ctx(blosc_context* context);
 BLOSC_EXPORT int blosc2_compress_ctx(
   blosc_context* context, size_t nbytes, const void* src, void* dest,
   size_t destsize);
-
 
 /**
   Context interface to blosc decompression. This does not require a

@@ -69,6 +69,7 @@ blosc2_sheader* blosc2_new_schunk(blosc2_sparams* sparams) {
   sheader->version = 0;     /* pre-first version */
   sheader->filters = encode_filters(sparams);
   sheader->filters_meta = sparams->filters_meta;
+  sheader->thread_safe = sparams->thread_safe;
   sheader->compressor = sparams->compressor;
   sheader->clevel = sparams->clevel;
   sheader->cbytes = sizeof(blosc2_sheader);
@@ -98,6 +99,25 @@ size_t append_chunk(blosc2_sheader* sheader, void* chunk) {
   return (size_t)nchunks + 1;
 }
 
+/* Compress a buffer with parameters of sheader */
+int32_t compress_buffer(sheader, isize, data, data_out, osize) {
+  if (sheader->thread_safe) {
+    /* Create a context for compression */
+    cparams.typesize = sheader->typesize;
+    cparams.compcode = sheader->compcode;
+    cparams.filtercode = sheader->filtercode;
+    cparams.clevel = sheader->clevel;
+    cparams.nthreads = sheader->nthreads;
+    cparams.blocksize = sheader->blocksize;
+    cctx = blosc2_create_cctx(&cparams);
+    cbytes = blosc2_compress_ctx(cctx, isize, data, data_out, osize);
+    blosc2_free_ctx(cctx);
+  }
+  else {
+    cbytes = blosc_compress(sheader->clevel, doshuffle, typesize, isize, data, data_out, osize);
+  }
+  return cbytes;
+}
 
 /* Set a delta reference for the super-chunk */
 int blosc2_set_delta_ref(blosc2_sheader* sheader, size_t typesize, size_t nbytes, void* ref) {
@@ -106,6 +126,7 @@ int blosc2_set_delta_ref(blosc2_sheader* sheader, size_t typesize, size_t nbytes
   uint8_t* dec_filters = decode_filters(sheader->filters);
   int clevel = sheader->clevel;
   int doshuffle = 0;
+  blosc2_context_cparams cparams = BLOSC_CPARAMS_DEFAULTS;
 
   if (dec_filters[0] == BLOSC_DELTA) {
     doshuffle = dec_filters[1];
@@ -121,8 +142,7 @@ int blosc2_set_delta_ref(blosc2_sheader* sheader, size_t typesize, size_t nbytes
   free(dec_filters);
 
   filters_chunk = malloc(nbytes + BLOSC_MAX_OVERHEAD);
-  cbytes = blosc_compress(clevel, doshuffle, typesize, nbytes, ref, filters_chunk,
-                          nbytes + BLOSC_MAX_OVERHEAD);
+  cbytes = compress_buffer(sheader, nbytes, ref, filters_chunk, nbytes + BLOSC_MAX_OVERHEAD);
   if (cbytes < 0) {
     free(filters_chunk);
     return cbytes;
