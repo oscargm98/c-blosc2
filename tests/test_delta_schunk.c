@@ -32,7 +32,7 @@ int main() {
   /* Create a super-chunk container */
   sc_params->filters[0] = BLOSC_DELTA;
   sc_params->filters[1] = BLOSC_BITSHUFFLE;
-  sc_params->compressor = BLOSC_BLOSCLZ;
+  sc_params->compcode = BLOSC_BLOSCLZ;
   sc_params->clevel = 5;
   sc_header = blosc2_new_schunk(sc_params);
 

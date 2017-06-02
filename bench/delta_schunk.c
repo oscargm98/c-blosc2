@@ -132,7 +132,7 @@ int main() {
   /* Create a super-chunk container */
   sparams.filters[0] = BLOSC_DELTA;
   sparams.filters[1] = BLOSC_SHUFFLE;
-  sparams.compressor = BLOSC_BLOSCLZ;
+  sparams.compcode = BLOSC_BLOSCLZ;
   sparams.clevel = 5;
   schunk = blosc2_new_schunk(&sparams);
 
