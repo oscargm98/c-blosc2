@@ -428,7 +428,7 @@ typedef struct {
   uint8_t flags1;
   uint8_t flags2;
   uint8_t thread_safe;
-  /* whether super-chunk can safely be accessed from several threads or not (1; meaning thread safe) */
+  /* whether super-chunk can safely be accessed from several threads or not */
   uint16_t compcode;
   /* The default compressor code.  Each chunk can override this. */
   uint16_t clevel;

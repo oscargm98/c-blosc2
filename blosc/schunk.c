@@ -29,7 +29,7 @@
 
 #endif  /* _WIN32 */
 
-/* If C11 is supported, use it's built-in aligned allocation. */
+/* If C11 is supported, use its built-in aligned allocation. */
 #if __STDC_VERSION__ >= 201112L
   #include <stdalign.h>
 #endif
@@ -109,6 +109,7 @@ int32_t compress_buffer(blosc2_sheader* sheader, size_t typesize, int doshuffle,
   int cbytes;
 
   if (sheader->thread_safe) {
+    printf("thread safe!\n");
     /* Create a context for compression */
     cparams.typesize = typesize;
     cparams.compcode = sheader->compcode;
@@ -119,6 +120,7 @@ int32_t compress_buffer(blosc2_sheader* sheader, size_t typesize, int doshuffle,
     blosc2_free_ctx(cctx);
   }
   else {
+    printf("not thread safe!\n");
     cbytes = blosc_compress(sheader->clevel, doshuffle, typesize, isize, data, data_out, osize);
   }
   return cbytes;

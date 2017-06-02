@@ -106,7 +106,7 @@ double get_usec_chunk(blosc_timestamp_t last, blosc_timestamp_t current, int nit
 
 int main() {
   int32_t *data, *data_dest;
-  static blosc2_sparams sparams;
+  blosc2_sparams sparams = BLOSC_SPARAMS_DEFAULTS;
   blosc2_sheader* schunk;
   int isize = CHUNKSIZE * sizeof(int32_t);
   int dsize;
