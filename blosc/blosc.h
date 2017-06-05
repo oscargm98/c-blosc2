@@ -664,15 +664,15 @@ BLOSC_EXPORT int blosc_get_blocksize(void);
 /**
   Force the use of a specific blocksize.  If 0, an automatic
   blocksize will be used (the default).
+
+  The blocksize is a critical parameter with important restrictions in
+  the allowed values, so use this with care.
 */
 BLOSC_EXPORT void blosc_set_blocksize(size_t blocksize);
 
 /**
   Set pointer to super-chunk.  If NULL, no super-chunk will be
   available (the default).
-
-  The blocksize is a critical parameter with important restrictions in
-  the allowed values, so use this with care.
 */
 BLOSC_EXPORT void blosc_set_schunk(blosc2_sheader* schunk);
 

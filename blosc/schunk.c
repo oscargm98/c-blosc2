@@ -101,27 +101,26 @@ size_t append_chunk(blosc2_sheader* sheader, void* chunk) {
 
 
 /* Compress a buffer with parameters of sheader */
-int32_t compress_buffer(blosc2_sheader* sheader, size_t typesize, int doshuffle,
+int32_t compress_buffer(int delta, blosc2_sheader* sheader, blosc2_context_cparams cparams,
                         size_t isize, void* data, void* data_out, size_t osize) {
-  int clevel = sheader->clevel;
-  blosc2_context_cparams cparams = BLOSC_CPARAMS_DEFAULTS;
   blosc_context *cctx;
   int cbytes;
+  char* compname;
 
   if (sheader->thread_safe) {
     printf("thread safe!\n");
-    /* Create a context for compression */
-    cparams.typesize = typesize;
-    cparams.compcode = sheader->compcode;
-    cparams.filtercode = doshuffle;
-    cparams.clevel = sheader->clevel;
+    if (!delta) cparams.schunk = sheader;
     cctx = blosc2_create_cctx(&cparams);
     cbytes = blosc2_compress_ctx(cctx, isize, data, data_out, osize);
     blosc2_free_ctx(cctx);
   }
   else {
     printf("not thread safe!\n");
-    cbytes = blosc_compress(sheader->clevel, doshuffle, typesize, isize, data, data_out, osize);
+    /* Compress the src buffer using super-chunk defaults */
+    blosc_compcode_to_compname(cparams.compcode, &compname);
+    blosc_set_compressor(compname);
+    if (!delta) blosc_set_schunk(sheader);
+    cbytes = blosc_compress(cparams.clevel, cparams.filtercode, cparams.typesize, isize, data, data_out, osize);
   }
   return cbytes;
 }
@@ -129,11 +128,11 @@ int32_t compress_buffer(blosc2_sheader* sheader, size_t typesize, int doshuffle,
 
 /* Set a delta reference for the super-chunk */
 int blosc2_set_delta_ref(blosc2_sheader* sheader, size_t typesize, size_t nbytes, void* ref) {
+  blosc2_context_cparams cparams = BLOSC_CPARAMS_DEFAULTS;
   int cbytes;
   void* filters_chunk;
   uint8_t* dec_filters = decode_filters(sheader->filters);
   int doshuffle = dec_filters[1];
-  int clevel = sheader->clevel;
 
   if (dec_filters[0] != BLOSC_DELTA) {
     printf("You cannot set a delta reference if delta filter is not set\n");
@@ -148,7 +147,11 @@ int blosc2_set_delta_ref(blosc2_sheader* sheader, size_t typesize, size_t nbytes
   }
 
   filters_chunk = malloc(nbytes + BLOSC_MAX_OVERHEAD);
-  cbytes = compress_buffer(sheader, typesize, doshuffle, nbytes, ref, filters_chunk, nbytes + BLOSC_MAX_OVERHEAD);
+  cparams.typesize = typesize;
+  cparams.filtercode = doshuffle;
+  cparams.compcode = sheader->compcode;
+  cparams.clevel = sheader->clevel;
+  cbytes = compress_buffer(1, sheader, cparams, nbytes, ref, filters_chunk, nbytes + BLOSC_MAX_OVERHEAD);
   if (cbytes < 0) {
     free(filters_chunk);
     return cbytes;
@@ -162,12 +165,12 @@ int blosc2_set_delta_ref(blosc2_sheader* sheader, size_t typesize, size_t nbytes
 /* Append a data buffer to a super-chunk. */
 size_t blosc2_append_buffer(blosc2_sheader* sheader, size_t typesize,
                             size_t nbytes, void* src) {
+  blosc2_context_cparams cparams = BLOSC_CPARAMS_DEFAULTS;
   int cbytes;
   void* chunk = malloc(nbytes + BLOSC_MAX_OVERHEAD);
   uint8_t* dec_filters = decode_filters(sheader->filters);
-  int clevel = sheader->clevel;
-  char* compname;
-  int doshuffle, ret;
+  int doshuffle;
+  int ret;
 
   /* Apply filters prior to compress */
   if (dec_filters[0] == BLOSC_DELTA) {
@@ -184,12 +187,11 @@ size_t blosc2_append_buffer(blosc2_sheader* sheader, size_t typesize,
   }
   free(dec_filters);
 
-  /* Compress the src buffer using super-chunk defaults */
-  blosc_compcode_to_compname(sheader->compcode, &compname);
-  blosc_set_compressor(compname);
-  blosc_set_schunk(sheader);
-  cbytes = blosc_compress(clevel, doshuffle, typesize, nbytes, src, chunk,
-                          nbytes + BLOSC_MAX_OVERHEAD);
+  cparams.typesize = typesize;
+  cparams.filtercode = doshuffle;
+  cparams.compcode = sheader->compcode;
+  cparams.clevel = sheader->clevel;
+  cbytes = compress_buffer(0, sheader, cparams, nbytes, src, chunk, nbytes + BLOSC_MAX_OVERHEAD);
   if (cbytes < 0) {
     free(chunk);
     return cbytes;
@@ -469,14 +471,14 @@ void* packed_append_chunk(void* packed, void* chunk) {
 
 /* Append a data buffer to a *packed* super-chunk. */
 void* blosc2_packed_append_buffer(void* packed, size_t typesize, size_t nbytes, void* src) {
-  int cname = *(int16_t*)((uint8_t*)packed + 4);
+  blosc2_context_cparams cparams = BLOSC_CPARAMS_DEFAULTS;
+  int compcode = *(int16_t*)((uint8_t*)packed + 4);
   int clevel = *(int16_t*)((uint8_t*)packed + 6);
   void* filters_chunk = (uint8_t*)packed + *(uint64_t*)((uint8_t*)packed + 40);
   uint8_t* filters = decode_filters(*(uint16_t*)((uint8_t*)packed + 8));
   int cbytes;
   void* chunk = malloc(nbytes + BLOSC_MAX_OVERHEAD);
   void* dest = malloc(nbytes);
-  char* compname;
   int doshuffle;
   void* new_packed;
 
@@ -496,10 +498,11 @@ void* blosc2_packed_append_buffer(void* packed, size_t typesize, size_t nbytes, 
   }
 
   /* Compress the src buffer using super-chunk defaults */
-  blosc_compcode_to_compname(cname, &compname);
-  blosc_set_compressor(compname);
-  cbytes = blosc_compress(clevel, doshuffle, typesize, nbytes, src, chunk,
-                          nbytes + BLOSC_MAX_OVERHEAD);
+  cparams.typesize = typesize;
+  cparams.filtercode = doshuffle;
+  cparams.compcode = compcode;
+  cparams.clevel = clevel;
+  cbytes = compress_buffer(0, NULL, cparams, nbytes, src, chunk, nbytes + BLOSC_MAX_OVERHEAD);
   if (cbytes < 0) {
     free(chunk);
     free(dest);
@@ -538,7 +541,6 @@ int blosc2_packed_decompress_chunk(void* packed, int nchunk, void** dest) {
   /* Create a buffer for destination */
   nbytes = *(int32_t*)((uint8_t*)src + 4);
   *dest = malloc((size_t)nbytes);
-
   /* And decompress it */
   chunksize = blosc_decompress(src, *dest, (size_t)nbytes);
   if (chunksize < 0) {
