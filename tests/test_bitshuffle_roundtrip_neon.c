@@ -37,7 +37,7 @@ static int test_bitshuffle_roundtrip_neon(size_t type_size, size_t num_elements,
   void* original = blosc_test_malloc(buffer_alignment, buffer_size);
   void* bitshuffled = blosc_test_malloc(buffer_alignment, buffer_size);
   void* bitunshuffled = blosc_test_malloc(buffer_alignment, buffer_size);
-  void* tmp_buf_buf = blosc_test_malloc(buffer_alignment, buffer_size);
+  void* tmp_buf = blosc_test_malloc(buffer_alignment, buffer_size);
 
   /* Fill the input data buffer with random values. */
   blosc_test_fill_random(original, buffer_size);
