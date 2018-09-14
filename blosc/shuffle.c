@@ -305,7 +305,7 @@ static shuffle_implementation_t get_shuffle_implementation() {
 //    impl_neon.unshuffle = (unshuffle_func)unshuffle_generic;
     impl_neon.bitshuffle = (bitshuffle_func)bitshuffle_neon;
     impl_neon.bitunshuffle = (bitunshuffle_func)bitunshuffle_neon;
-//    impl_neon.bitshuffle = (bitshuffle_func)bshuf_trans_bit_elem_scal;
+//    impl_neon.bitshuffle = (bitshuffle_func)bitshuffle_generic;
 //    impl_neon.bitunshuffle = (bitunshuffle_func)bshuf_untrans_bit_elem_scal;
     return impl_neon;
   }
@@ -317,8 +317,8 @@ static shuffle_implementation_t get_shuffle_implementation() {
   impl_generic.name = "generic";
   impl_generic.shuffle = (shuffle_func)shuffle_generic;
   impl_generic.unshuffle = (unshuffle_func)unshuffle_generic;
-  impl_generic.bitshuffle = (bitshuffle_func)bshuf_trans_bit_elem_scal;
-  impl_generic.bitunshuffle = (bitunshuffle_func)bshuf_untrans_bit_elem_scal;
+  impl_generic.bitshuffle = (bitshuffle_func)bitshuffle_generic;
+  impl_generic.bitunshuffle = (bitunshuffle_func)bitunshuffle_generic;
   return impl_generic;
 }
 

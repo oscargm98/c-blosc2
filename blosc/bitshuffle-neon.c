@@ -923,7 +923,7 @@ bitshuffle_neon(void* _src, void* _dest, const size_t size,
   /* If the block size is too small to be vectorized,
      use the generic implementation. */
   if (size * elem_size < vectorized_chunk_size) {
-    count = bshuf_trans_bit_elem_scal((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
+    count = bitshuffle_generic((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
     return count;
   }
 
@@ -946,7 +946,7 @@ bitshuffle_neon(void* _src, void* _dest, const size_t size,
       break;
     default:
       /* Non-optimized bitshuffle */
-      count = bshuf_trans_bit_elem_scal((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
+      count = bitshuffle_generic((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
       /* The non-optimized function covers the whole buffer,
          so we're done processing here. */
       return count;
@@ -968,7 +968,7 @@ bitunshuffle_neon(void* _src, void* _dest, const size_t size,
   /* If the block size is too small to be vectorized,
      use the generic implementation. */
   if (size * elem_size < vectorized_chunk_size) {
-    count = bshuf_untrans_bit_elem_scal((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
+    count = bitunshuffle_generic((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
     return count;
   }
 
@@ -991,7 +991,7 @@ bitunshuffle_neon(void* _src, void* _dest, const size_t size,
       break;
     default:
       /* Non-optimized bitunshuffle */
-      count = bshuf_untrans_bit_elem_scal((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
+      count = bitunshuffle_generic((void*)_src, (void*)_dest, size, elem_size, tmp_buf);
       /* The non-optimized function covers the whole buffer,
          so we're done processing here. */
       return count;

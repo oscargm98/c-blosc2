@@ -123,8 +123,8 @@ int64_t bshuf_trans_bitrow_eight(const void* in, void* out, const size_t size,
 
 
 /* Transpose bits within elements. */
-int64_t bshuf_trans_bit_elem_scal(const void* in, void* out, const size_t size,
-                                  const size_t elem_size, void* tmp_buf) {
+int64_t bitshuffle_generic(const void *in, void *out, const size_t size,
+                           const size_t elem_size, void *tmp_buf) {
 
     int64_t count;
 
@@ -206,8 +206,8 @@ int64_t bshuf_shuffle_bit_eightelem_scal(const void* in, void* out, \
 
 
 /* Untranspose bits within elements. */
-int64_t bshuf_untrans_bit_elem_scal(const void* in, void* out, const size_t size,
-                                    const size_t elem_size, void* tmp_buf) {
+int64_t bitunshuffle_generic(const void* in, void* out, const size_t size,
+                             const size_t elem_size, void* tmp_buf) {
 
     int64_t count;
 

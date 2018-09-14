@@ -17,7 +17,7 @@
 /* Include NEON-accelerated shuffle implementation if supported by this compiler.
    TODO: Need to also do run-time CPU feature support here. */
 #if defined(SHUFFLE_NEON_ENABLED)
-  #include "../blosc/shuffle-neon.h"
+  #include "../blosc/bitshuffle-neon.h"
 #else
   #if defined(_MSC_VER)
     #pragma message("NEON shuffle tests not enabled.")
