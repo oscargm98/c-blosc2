@@ -529,9 +529,9 @@ unsigned char* _safecopy(unsigned char *out, const unsigned char *from, unsigned
 #endif
 
   // If out and from are away more than the size of the copy, then a fastcopy is safe
-//  if (out - from >= sz) {
-//    return fastcopy(out, from, len);
-//  }
+  if (out - from >= sz) {
+    return fastcopy(out, from, len);
+  }
 
   // Otherwise we absolutely need a safecopy
   unsigned overlap_dist = out - from;
@@ -586,9 +586,9 @@ unsigned char* _safecopy(unsigned char *out, const unsigned char *from, unsigned
 
 /* Same as fastcopy() but without overwriting origin or destination when they overlap */
 unsigned char* safecopy(unsigned char *out, const unsigned char *from, unsigned len) {
-#if !defined(__AVX2__)
+#if defined(__AVX2__)
   unsigned sz = sizeof(__m256i);
-#elif !defined(__SSE2__)
+#elif defined(__SSE2__)
   unsigned sz = sizeof(__m128i);
 #else
   unsigned sz = sizeof(uint64_t);
@@ -617,8 +617,16 @@ unsigned char* safecopy(unsigned char *out, const unsigned char *from, unsigned 
 
   // Copy aligned values
   unsigned naligned_copies = len / sz;
+#if defined(__AVX2__)
+  __m256i* tout = (__m256i*)out;
+  __m256i tfrom = _mm256_load_si256((__m256i*)(from - sz));
+#elif defined(__SSE2__)
+  __m128i* tout = (__m128i*)out;
+  __m128i tfrom = _mm_load_si128((__m128i*)(from - sz));
+#else
   uint64_t* tout = (uint64_t*)out;
   uint64_t tfrom = *(uint64_t *) (from - sz);
+#endif
   for (unsigned i = 0; i < naligned_copies; i++) {
     tout[i] = tfrom;
   }
