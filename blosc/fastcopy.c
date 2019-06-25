@@ -519,7 +519,7 @@ unsigned char *fastcopy(unsigned char *out, const unsigned char *from, unsigned 
 
 
 /* Same as fastcopy() but without overwriting origin or destination when they overlap */
-unsigned char* safecopy(unsigned char *out, const unsigned char *from, unsigned len) {
+unsigned char* _safecopy(unsigned char *out, const unsigned char *from, unsigned len) {
 #if defined(__AVX2__)
   unsigned sz = sizeof(__m256i);
 #elif defined(__SSE2__)
@@ -529,9 +529,9 @@ unsigned char* safecopy(unsigned char *out, const unsigned char *from, unsigned 
 #endif
 
   // If out and from are away more than the size of the copy, then a fastcopy is safe
-  if (out - from >= sz) {
-    return fastcopy(out, from, len);
-  }
+//  if (out - from >= sz) {
+//    return fastcopy(out, from, len);
+//  }
 
   // Otherwise we absolutely need a safecopy
   unsigned overlap_dist = out - from;
@@ -571,8 +571,66 @@ unsigned char* safecopy(unsigned char *out, const unsigned char *from, unsigned 
       }
   }
 
-  // Copy the leftovers (a fastcopy is safe here)
-  out = fastcopy(out, from, len);
+  // Copy the leftovers
+  if (out - from >= sz) {
+    out = fastcopy(out, from, len);
+  }
+  else {
+    for (; len > 0; len--) {
+      *out++ = *from++;
+    }
+  }
+
+  return out;
+}
+
+/* Same as fastcopy() but without overwriting origin or destination when they overlap */
+unsigned char* safecopy(unsigned char *out, const unsigned char *from, unsigned len) {
+#if !defined(__AVX2__)
+  unsigned sz = sizeof(__m256i);
+#elif !defined(__SSE2__)
+  unsigned sz = sizeof(__m128i);
+#else
+  unsigned sz = sizeof(uint64_t);
+#endif
+
+  unsigned pattern_len = out - from;
+
+  // If pattern_len is more than the size of the element that is copied, then do fastcopy
+  if (pattern_len >= sz) {
+    return fastcopy(out, from, len);
+  }
+
+  unsigned aligned_out = sz - (unsigned)out % sz;
+
+  if (len < sz + aligned_out) {
+    for (; len > 0; len--) {
+      *out++ = *from++;
+    }
+    return out;
+  }
+
+  for (unsigned i = 0; i < sz + aligned_out; i++) {
+    *out++ = *from++;
+  }
+  len -= sz + aligned_out;
+
+  // Copy aligned values
+  unsigned naligned_copies = len / sz;
+  uint64_t* tout = (uint64_t*)out;
+  uint64_t tfrom = *(uint64_t *) (from - sz);
+  for (unsigned i = 0; i < naligned_copies; i++) {
+    tout[i] = tfrom;
+  }
+  out += naligned_copies * sz;
+  from += naligned_copies * sz;
+  len -= naligned_copies * sz;
+  assert(len < sz + pattern_len);
+
+  // Copy the leftovers
+  for (; len > 0; len--) {
+    *out++ = *from++;
+  }
 
   return out;
 }
