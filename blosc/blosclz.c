@@ -439,22 +439,10 @@ static unsigned char* copyrun(unsigned char *out, const unsigned char *from, uns
 
   unsigned pattern_len = out - from;
 
-  // If pattern_len is more than the size of the element that is copied, then do fastcopy
+  // If pattern_len is more than the size of the atom that is copied, then do fastcopy
   if (pattern_len > sz) {
     return fastcopy(out, from, len);
   }
-
-//  bool allzeros = true;
-//  for (unsigned i = 0; i < pattern_len; i++) {
-//    if (from[i] != 0) {
-//      allzeros = false;
-//    }
-//  }
-//  if (allzeros) {
-//    printf("0");
-//    memset(out, 0, len);
-//    return out + len;
-//  }
 
   unsigned aligned_out = sz - (unsigned)out % sz;
 
