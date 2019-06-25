@@ -15,6 +15,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include "blosclz.h"
 #include "fastcopy.h"
 #include "blosc-common.h"
@@ -426,6 +427,76 @@ int blosclz_compress(const int opt_level, const void* input, int length,
 
 }
 
+/* Copy a run */
+static unsigned char* copyrun(unsigned char *out, const unsigned char *from, unsigned len) {
+#if defined(__AVX2__)
+  unsigned sz = sizeof(__m256i);
+#elif defined(__SSE2__)
+  unsigned sz = sizeof(__m128i);
+#else
+  unsigned sz = sizeof(uint64_t);
+#endif
+
+  unsigned pattern_len = out - from;
+
+  // If pattern_len is more than the size of the element that is copied, then do fastcopy
+  if (pattern_len > sz) {
+    return fastcopy(out, from, len);
+  }
+
+//  bool allzeros = true;
+//  for (unsigned i = 0; i < pattern_len; i++) {
+//    if (from[i] != 0) {
+//      allzeros = false;
+//    }
+//  }
+//  if (allzeros) {
+//    printf("0");
+//    memset(out, 0, len);
+//    return out + len;
+//  }
+
+  unsigned aligned_out = sz - (unsigned)out % sz;
+
+  if (len < sz + aligned_out) {
+    for (; len > 0; len--) {
+      *out++ = *from++;
+    }
+    return out;
+  }
+
+  for (unsigned i = 0; i < sz + aligned_out; i++) {
+    *out++ = *from++;
+  }
+  len -= sz + aligned_out;
+
+  // Copy aligned values
+  unsigned naligned_copies = len / sz;
+#if defined(__AVX2__)
+  __m256i* tout = (__m256i*)out;
+  __m256i tfrom = _mm256_loadu_si256((__m256i*)(from - sz));
+#elif defined(__SSE2__)
+  __m128i* tout = (__m128i*)out;
+  __m128i tfrom = _mm_loadu_si128((__m128i*)(from - sz));
+#else
+  uint64_t* tout = (uint64_t*)out;
+  uint64_t tfrom = *(uint64_t *) (from - sz);
+#endif
+  for (unsigned i = 0; i < naligned_copies; i++) {
+    tout[i] = tfrom;
+  }
+  out += naligned_copies * sz;
+  from += naligned_copies * sz;
+  len -= naligned_copies * sz;
+
+  // Copy the leftovers
+  for (; len > 0; len--) {
+    *out++ = *from++;
+  }
+
+  return out;
+}
+
 int blosclz_decompress(const void* input, int length, void* output, int maxout) {
   const uint8_t* ip = (const uint8_t*)input;
   const uint8_t* ip_limit = ip + length;
@@ -486,7 +557,7 @@ int blosclz_decompress(const void* input, int length, void* output, int maxout) 
         ref--;
         len += 3;
         // We absolutely need a safecopy here
-        op = safecopy(op, ref, (unsigned) len);
+        op = copyrun(op, ref, (unsigned) len);
       }
     }
     else {
