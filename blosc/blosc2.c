@@ -765,7 +765,9 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
     else if (context->compcode == BLOSC_LZ4) {
       void *hash_table = NULL;
     #ifdef HAVE_IPP
+      printf("Before hash table\n");
       hash_table = (void*)thread_context->lz4_hash_table;
+      printf("After hash table\n");
     #endif
       printf("Before LZ4\n");
       cbytes = lz4_wrap_compress((char*)_src + j * neblock, (size_t)neblock,
