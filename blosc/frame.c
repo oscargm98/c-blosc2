@@ -1241,6 +1241,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
   void* off_chunk = malloc((size_t)off_nbytes + BLOSC_MAX_OVERHEAD);
   int32_t new_off_cbytes = blosc2_compress_ctx(cctx, (size_t)off_nbytes, offsets,
           off_chunk, (size_t)off_nbytes + BLOSC_MAX_OVERHEAD);
+  printf("Finish blosc2_compress_ctx: %d\n", new_off_cbytes);
   blosc2_free_ctx(cctx);
   free(offsets);
   if (new_off_cbytes < 0) {
