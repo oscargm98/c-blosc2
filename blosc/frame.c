@@ -1215,6 +1215,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
       fprintf(stderr, "Error: cannot get the offsets for the frame\n");
       return NULL;
     }
+    printf("Decompress offsets\n");
     // Decompress offsets
     blosc2_dparams off_dparams = BLOSC2_DPARAMS_DEFAULTS;
     blosc2_context *dctx = blosc2_create_dctx(off_dparams);
@@ -1231,6 +1232,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
   offsets[nchunks] = cbytes;
 
   // Re-compress the offsets again
+  printf("Recomrpess offssets\n");
   blosc2_context* cctx = blosc2_create_cctx(BLOSC2_CPARAMS_DEFAULTS);
   cctx->typesize = 8;
   void* off_chunk = malloc((size_t)off_nbytes + BLOSC_MAX_OVERHEAD);
@@ -1245,6 +1247,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
 
   int64_t new_frame_len = header_len + new_cbytes + new_off_cbytes + trailer_len;
 
+  printf("Update frame\n");
   FILE* fp = NULL;
   if (frame->sdata != NULL) {
     uint8_t* framep = frame->sdata;
@@ -1282,12 +1285,14 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
   free(chunk);
   free(off_chunk);
 
+  printf("Update frame header\n");
   frame->len = new_frame_len;
   rc = frame_update_header(frame, schunk, false);
   if (rc < 0) {
     return NULL;
   }
 
+  printf("Update frame trailer\n");
   rc = frame_update_trailer(frame, schunk);
   if (rc < 0) {
     return NULL;
