@@ -1590,10 +1590,11 @@ int blosc_compress_context(blosc2_context* context) {
   blosc_timestamp_t last, current;
 
   blosc_set_timestamp(&last);
-
+  printf("Start compress_context\n");
   if (!(*(context->header_flags) & BLOSC_MEMCPYED)) {
     /* Do the actual compression */
     ntbytes = do_job(context);
+    printf("after_do_job\n");
     if (ntbytes < 0) {
       return -1;
     }
@@ -1682,6 +1683,7 @@ int blosc2_compress_ctx(blosc2_context* context, size_t nbytes,
   if (cbytes < 0) {
     return cbytes;
   }
+    printf("cbytes: %d\n", cbytes);
 
   if (context->use_dict && context->dict_cdict == NULL) {
 
