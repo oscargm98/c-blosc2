@@ -147,6 +147,7 @@ int blosc2_schunk_append_chunk(blosc2_schunk *schunk, uint8_t *chunk, bool copy)
   int32_t nbytes = sw32_(chunk + 4);
   int32_t cbytes = sw32_(chunk + 12);
 
+  printf("Assertions in append chunk\n");
   if ((schunk->nchunks > 0) && (nbytes > schunk->chunksize)) {
     fprintf(stderr, "appending chunks with a larger chunksize than schunk is not allowed yet: "
                     "%d > %d", nbytes, schunk->chunksize);
@@ -164,6 +165,7 @@ int blosc2_schunk_append_chunk(blosc2_schunk *schunk, uint8_t *chunk, bool copy)
 
   // Update super-chunk or frame
   if (schunk->frame == NULL) {
+      printf("Frame null\n");
     // Check that we are not appending a small chunk after another small chunk
     if ((schunk->nchunks > 0) && (nbytes < schunk->chunksize)) {
       uint8_t* last_chunk = schunk->data[nchunks - 1];
@@ -184,6 +186,7 @@ int blosc2_schunk_append_chunk(blosc2_schunk *schunk, uint8_t *chunk, bool copy)
         chunk = chunk_copy;
     }
     else if (cbytes < nbytes) {
+        printf("Realloc chunk\n");
       // We still want to do a shrink of the chunk
       chunk = realloc(chunk, cbytes);
     }
@@ -197,6 +200,7 @@ int blosc2_schunk_append_chunk(blosc2_schunk *schunk, uint8_t *chunk, bool copy)
     schunk->data[nchunks] = chunk;
   }
   else {
+      printf("Frame not null\n");
     frame_append_chunk(schunk->frame, chunk, schunk);
   }
 
