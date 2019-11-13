@@ -720,6 +720,7 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
   printf("After pipeline\n");
   /* Calculate acceleration for different compressors */
   accel = get_accel(context);
+  printf("After get accel\n");
 
   /* The number of splits for this block */
   if (!dont_split && !leftoverblock && !dict_training) {
@@ -748,6 +749,7 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
         return 0;                  /* non-compressible block */
       }
     }
+    printf("Before dic_trianing\n");
     if (dict_training) {
       // We are in the build dict state, so don't compress
       // TODO: copy only a percentage for sampling
