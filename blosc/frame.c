@@ -1158,6 +1158,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
   int64_t cbytes;
   int32_t chunksize;
   int32_t nchunks;
+  printf("Getting header info\n");
   int rc = get_header_info(frame, &header_len, &frame_len, &nbytes, &cbytes, &chunksize, &nchunks,
                            NULL, NULL, NULL, NULL, NULL);
   if (rc < 0) {
@@ -1165,6 +1166,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
     return NULL;
   }
 
+  printf("Getting trailer offset\n");
   int64_t trailer_offset = get_trailer_offset(frame, header_len, cbytes);
   int64_t trailer_len = frame->len - trailer_offset;
 
@@ -1179,6 +1181,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
     return NULL;
   }
 
+  printf("Getting last chunk\n");
   // Check that we are not appending a small chunk after another small chunk
   if ((nchunks > 0) && (nbytes_chunk < chunksize)) {
     uint8_t* last_chunk;
@@ -1202,6 +1205,7 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
     }
   }
 
+  printf("Getting offsets\n");
   // Get the current offsets and add one more
   int32_t off_nbytes = (nchunks + 1) * 8;
   int64_t* offsets = (int64_t *) malloc((size_t)off_nbytes);
