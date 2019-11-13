@@ -1660,6 +1660,7 @@ int blosc2_compress_ctx(blosc2_context* context, size_t nbytes,
     return -10;
   }
 
+  printf("Initialize context compression\n");
   error = initialize_context_compression(
     context, (int32_t)nbytes, src, dest, (int32_t)destsize,
     context->clevel, context->filters, context->filters_meta,
@@ -1670,12 +1671,14 @@ int blosc2_compress_ctx(blosc2_context* context, size_t nbytes,
   }
 
   /* Write the extended header */
-  error = write_compression_header(context, true);
+    printf("Write compression header\n");
+    error = write_compression_header(context, true);
   if (error < 0) {
     return error;
   }
 
-  cbytes = blosc_compress_context(context);
+    printf("Compress context\n");
+    cbytes = blosc_compress_context(context);
   if (cbytes < 0) {
     return cbytes;
   }
