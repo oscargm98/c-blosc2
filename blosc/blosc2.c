@@ -750,6 +750,8 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
       }
     }
     printf("Before dic_trianing\n");
+    printf("Compcode: %d\n", context->compcode);
+
     if (dict_training) {
       // We are in the build dict state, so don't compress
       // TODO: copy only a percentage for sampling
