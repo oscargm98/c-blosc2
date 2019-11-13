@@ -1235,6 +1235,9 @@ void* frame_append_chunk(blosc2_frame* frame, void* chunk, blosc2_schunk* schunk
   printf("Recomrpess offssets\n");
   blosc2_context* cctx = blosc2_create_cctx(BLOSC2_CPARAMS_DEFAULTS);
   cctx->typesize = 8;
+  printf("off_nbytes: %d\n", off_nbytes);
+  printf("cbytes: %llu\n", cbytes);
+
   void* off_chunk = malloc((size_t)off_nbytes + BLOSC_MAX_OVERHEAD);
   int32_t new_off_cbytes = blosc2_compress_ctx(cctx, (size_t)off_nbytes, offsets,
           off_chunk, (size_t)off_nbytes + BLOSC_MAX_OVERHEAD);
