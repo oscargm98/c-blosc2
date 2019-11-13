@@ -211,6 +211,7 @@ int blosc2_schunk_append_buffer(blosc2_schunk *schunk, void *src, size_t nbytes)
   uint8_t* chunk = malloc(nbytes + BLOSC_MAX_OVERHEAD);
 
   /* Compress the src buffer using super-chunk context */
+  printf("Compress the buffer\n");
   int cbytes = blosc2_compress_ctx(schunk->cctx, nbytes, src, chunk,
                                    nbytes + BLOSC_MAX_OVERHEAD);
   if (cbytes < 0) {
@@ -219,6 +220,7 @@ int blosc2_schunk_append_buffer(blosc2_schunk *schunk, void *src, size_t nbytes)
   }
 
   // We don't need a copy of the chunk, as it will be shrinked if necessary
+  printf("Append chunk in blosc\n");
   int nchunks = blosc2_schunk_append_chunk(schunk, chunk, false);
 
   return nchunks;
