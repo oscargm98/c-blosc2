@@ -697,6 +697,7 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
   uint8_t *_tmp = tmp, *_tmp2 = tmp2, *_tmp3 = thread_context->tmp4;
   int last_filter_index = last_filter(context->filters, 'c');
 
+  printf("Starting blosc_c\n");
   if (last_filter_index >= 0 || context->prefilter != NULL) {
     /* Apply the filter pipeline just for the prefilter */
     if (context->clevel == 0 && context->prefilter != NULL) {
@@ -716,6 +717,7 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
     _src = src + offset;
   }
 
+  printf("After pipeline\n");
   /* Calculate acceleration for different compressors */
   accel = get_accel(context);
 
@@ -763,8 +765,10 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
     #ifdef HAVE_IPP
       hash_table = (void*)thread_context->lz4_hash_table;
     #endif
+      printf("Before LZ4\n");
       cbytes = lz4_wrap_compress((char*)_src + j * neblock, (size_t)neblock,
                                  (char*)dest, (size_t)maxout, accel, hash_table);
+      printf("After LZ4: %d\n", cbytes);
     }
     else if (context->compcode == BLOSC_LZ4HC) {
       cbytes = lz4hc_wrap_compress((char*)_src + j * neblock, (size_t)neblock,
