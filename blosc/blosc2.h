@@ -620,7 +620,7 @@ typedef struct {
   int32_t out_size;  // automatically filled
   int32_t out_typesize;  // automatically filled
   int32_t out_offset; // automatically filled
-  int8_t compressed_inputs;  // whether the inputs are compressed or not (should be the first to avoid crashes, WTF??)
+  int32_t compressed_inputs;  // whether the inputs are compressed or not (should be the first to avoid crashes, WTF??)
 } blosc2_prefilter_params;
 
 /**
