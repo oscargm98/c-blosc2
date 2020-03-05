@@ -621,7 +621,7 @@ typedef struct {
   int32_t out_typesize;  // automatically filled
   int32_t out_offset; // automatically filled
   int32_t compressed_inputs;  // whether the inputs are compressed or not (should be the first to avoid crashes, WTF??)
-} blosc2_prefilter_params;
+} __attribute__((packed)) blosc2_prefilter_params;
 
 /**
  * @brief The type of the prefilter function.
