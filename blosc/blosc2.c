@@ -2285,11 +2285,11 @@ static void t_blosc_do_job(void* ctxt) {
         if (flags & BLOSC_MEMCPYED) {
           /* We want to memcpy only */
           fastcopy(dest + nblock_ * blocksize,
-                  src + BLOSC_MAX_OVERHEAD + nblock_ * blocksize, (unsigned int) bsize);
+                   src + BLOSC_MAX_OVERHEAD + nblock_ * blocksize, (unsigned int) bsize);
           cbytes = (int32_t) bsize;
         } else {
           cbytes = blosc_d(thcontext, bsize, leftoverblock,
-                      src + sw32_(bstarts + nblock_),
+                          src + sw32_(bstarts + nblock_),
                            dest, nblock_ * blocksize, tmp, tmp2);
         }
 
