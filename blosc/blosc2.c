@@ -28,6 +28,7 @@
 #include "delta.h"
 #include "trunc-prec.h"
 #include "blosclz.h"
+#include "ndlz.h"
 #include "btune.h"
 
 #if defined(HAVE_LZ4)
@@ -213,6 +214,8 @@ static int compname_to_clibcode(const char* compname) {
     return BLOSC_ZLIB_LIB;
   if (strcmp(compname, BLOSC_ZSTD_COMPNAME) == 0)
     return BLOSC_ZSTD_LIB;
+  if (strcmp(compname, BLOSC_NDLZ_COMPNAME) == 0)
+    return BLOSC_NDLZ_LIB;
   return -1;
 }
 
@@ -224,6 +227,7 @@ static const char* clibcode_to_clibname(int clibcode) {
   if (clibcode == BLOSC_SNAPPY_LIB) return BLOSC_SNAPPY_LIBNAME;
   if (clibcode == BLOSC_ZLIB_LIB) return BLOSC_ZLIB_LIBNAME;
   if (clibcode == BLOSC_ZSTD_LIB) return BLOSC_ZSTD_LIBNAME;
+  if (clibcode == BLOSC_NDLZ_LIB) return BLOSC_NDLZ_LIBNAME;
   return NULL;                  /* should never happen */
 }
 
@@ -252,6 +256,8 @@ int blosc_compcode_to_compname(int compcode, const char** compname) {
     name = BLOSC_ZLIB_COMPNAME;
   else if (compcode == BLOSC_ZSTD)
     name = BLOSC_ZSTD_COMPNAME;
+  else if (compcode == BLOSC_NDLZ)
+    name = BLOSC_NDLZ_COMPNAME;
 
   *compname = name;
 
@@ -280,6 +286,8 @@ int blosc_compcode_to_compname(int compcode, const char** compname) {
   else if (compcode == BLOSC_ZSTD)
     code = BLOSC_ZSTD;
 #endif /* HAVE_ZSTD */
+  else if (compcode == BLOSC_NDLZ)
+    code = BLOSC_NDLZ;
 
   return code;
 }
@@ -320,6 +328,9 @@ int blosc_compname_to_compcode(const char* compname) {
     code = BLOSC_ZSTD;
   }
 #endif /*  HAVE_ZSTD */
+  else if (strcmp(compname, BLOSC_NDLZ_COMPNAME) == 0) {
+    code = BLOSC_NDLZ;
+  }
 
   return code;
 }
@@ -527,7 +538,7 @@ static int zstd_wrap_decompress(struct thread_context* thread_context,
 }
 #endif /*  HAVE_ZSTD */
 
-/* Compute acceleration for blosclz */
+/* Compute acceleration for different codecs */
 static int get_accel(const blosc2_context* context) {
   int clevel = context->clevel;
 
@@ -797,6 +808,10 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
                                   (char*)dest, (size_t)maxout, context->clevel);
     }
   #endif /* HAVE_ZSTD */
+    else if (context->compcode == BLOSC_NDLZ) {
+      cbytes = ndlz_compress(context->clevel, _src + j * neblock,
+                             (int)neblock, dest, (int)maxout);
+    }
 
     else {
       blosc_compcode_to_compname(context->compcode, &compname);
@@ -1014,13 +1029,20 @@ static int blosc_d(
                                       (char*)_dest, (size_t)neblock);
       }
   #endif /*  HAVE_ZSTD */
-      else {
+      else if (compformat == BLOSC_ZSTD_FORMAT) {
         compname = clibcode_to_clibname(compformat);
         fprintf(stderr,
                 "Blosc has not been compiled with decompression "
                     "support for '%s' format. ", compname);
         fprintf(stderr, "Please recompile for adding this support.\n");
         return -5;    /* signals no decompression support */
+      }
+      else if (compformat == BLOSC_NDLZ_FORMAT) {
+        nbytes = ndlz_decompress(src, cbytes, _dest, (int)neblock);
+      }
+      else {
+        // Unknown format
+        return -3;
       }
 
       /* Check that decompressed bytes number is correct */
@@ -1544,6 +1566,11 @@ static int write_compression_header(blosc2_context* context,
       context->dest[1] = BLOSC_ZSTD_VERSION_FORMAT;
       break;
 #endif /*  HAVE_ZSTD */
+
+    case BLOSC_NDLZ:
+      compformat = BLOSC_NDLZ_FORMAT;
+      context->dest[1] = BLOSC_NDLZ_VERSION_FORMAT;
+      break;
 
     default: {
       const char* compname;
@@ -2584,6 +2611,8 @@ const char* blosc_list_compressors(void) {
   strcat(ret, ",");
   strcat(ret, BLOSC_ZSTD_COMPNAME);
 #endif /* HAVE_ZSTD */
+  strcat(ret, ",");
+  strcat(ret, BLOSC_NDLZ_COMPNAME);
   compressors_list_done = 1;
   return ret;
 }
@@ -2649,6 +2678,9 @@ int blosc_get_complib_info(const char* compname, char** complib, char** version)
     clibversion = sbuffer;
   }
 #endif /* HAVE_ZSTD */
+  else if (clibcode == BLOSC_NDLZ_LIB) {
+    clibversion = NDLZ_VERSION_STRING;
+  }
 
 #ifdef _MSC_VER
   *complib = _strdup(clibname);

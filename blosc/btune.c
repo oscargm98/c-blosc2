@@ -14,7 +14,7 @@
 
 /* Whether a codec is meant for High Compression Ratios
    Includes LZ4 + BITSHUFFLE here, but not BloscLZ + BITSHUFFLE because,
-   for some reason, the latter does not work too well */
+   BloscLZ always works with splits, which have a different blocksize computation. */
 static bool is_HCR(blosc2_context * context) {
   switch (context->compcode) {
     case BLOSC_BLOSCLZ :
@@ -29,6 +29,8 @@ static bool is_HCR(blosc2_context * context) {
       return true;
     case BLOSC_ZSTD :
       return true;
+    case BLOSC_NDLZ :
+      return false;
     default :
       fprintf(stderr, "Error in is_COMP_HCR: codec %d not handled\n",
               context->compcode);

@@ -145,7 +145,8 @@ enum {
   BLOSC_ZLIB = 4,
   BLOSC_ZSTD = 5,
   BLOSC_LIZARD = 6,
-  BLOSC_MAX_CODECS = 7,  //!< maximum number of reserved codecs
+  BLOSC_NDLZ = 7,
+  BLOSC_MAX_CODECS = 8,  //!< maximum number of reserved codecs
 };
 
 
@@ -158,6 +159,7 @@ enum {
 #define BLOSC_SNAPPY_COMPNAME    "snappy"
 #define BLOSC_ZLIB_COMPNAME      "zlib"
 #define BLOSC_ZSTD_COMPNAME      "zstd"
+#define BLOSC_NDLZ_COMPNAME      "ndlz"
 
 /**
  * @brief Codes for compression libraries shipped with Blosc (code must be < 8)
@@ -169,6 +171,7 @@ enum {
   BLOSC_ZLIB_LIB = 3,
   BLOSC_ZSTD_LIB = 4,
   BLOSC_LIZARD_LIB = 5,
+  BLOSC_NDLZ_LIB = 6,
   BLOSC_SCHUNK_LIB = 7,   //!< compressor library in super-chunk header
 };
 
@@ -185,6 +188,7 @@ enum {
   #define BLOSC_ZLIB_LIBNAME    "Zlib"
 #endif	/* HAVE_MINIZ */
 #define BLOSC_ZSTD_LIBNAME      "Zstd"
+#define BLOSC_NDLZ_LIBNAME      "ndLZ"
 
 /**
  * @brief The codes for compressor formats shipped with Blosc
@@ -198,6 +202,7 @@ enum {
   BLOSC_SNAPPY_FORMAT = BLOSC_SNAPPY_LIB,
   BLOSC_ZLIB_FORMAT = BLOSC_ZLIB_LIB,
   BLOSC_ZSTD_FORMAT = BLOSC_ZSTD_LIB,
+  BLOSC_NDLZ_FORMAT = BLOSC_NDLZ_LIB,
 };
 
 /**
@@ -212,6 +217,7 @@ enum {
   BLOSC_SNAPPY_VERSION_FORMAT = 1,
   BLOSC_ZLIB_VERSION_FORMAT = 1,
   BLOSC_ZSTD_VERSION_FORMAT = 1,
+  BLOSC_NDLZ_VERSION_FORMAT = 1,
 };
 
 /**
@@ -293,7 +299,7 @@ BLOSC_EXPORT void blosc_destroy(void);
  * **BLOSC_TYPESIZE=(INTEGER)**: This will overwrite the *typesize*
  * parameter before the compression process starts.
  *
- * **BLOSC_COMPRESSOR=[BLOSCLZ | LZ4 | LZ4HC | LIZARD | SNAPPY | ZLIB]**:
+ * **BLOSC_COMPRESSOR=[BLOSCLZ | LZ4 | LZ4HC | LIZARD | ZLIB | ZSTD | NDLZ]**:
  * This will call *blosc_set_compressor(BLOSC_COMPRESSOR)* before the
  * compression process starts.
  *
@@ -426,7 +432,7 @@ BLOSC_EXPORT const char* blosc_get_compressor(void);
 
 /**
  * @brief Select the compressor to be used. The supported ones are "blosclz",
- * "lz4", "lz4hc", "snappy", "zlib" and "ztsd". If this function is not
+ * "lz4", "lz4hc", "snappy", "zlib", "ztsd" and "ndlz". If this function is not
  * called, then "blosclz" will be used.
  *
  * @param compname The name identifier of the compressor to be set.
