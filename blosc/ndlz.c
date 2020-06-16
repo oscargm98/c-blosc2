@@ -3,6 +3,7 @@
 
   Author: Francesc Alted <francesc@blosc.org>
   Author: Oscar Griñón <oscar@blosc.org>
+  Author: Aleix Alcacer <aleix@blosc.org>
   Creation date: 2020-06-12
 
   See LICENSE.txt for details about copyright and rights to use.
