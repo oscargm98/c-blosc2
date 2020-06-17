@@ -1,23 +1,22 @@
 ===============================================================
- Blosc: A blocking, shuffling and lossless compression library
+ C-Blosc2: A simple, compressed, fast and persistent data store library for C
 ===============================================================
 
 :Author: The Blosc Development Team
 :Contact: blosc@blosc.org
 :URL: http://www.blosc.org
 :Gitter: |gitter|
-:Travis CI: |travis|
-:Appveyor: |appveyor|
+:Actions: |actions|
 :NumFOCUS: |numfocus|
 
 .. |gitter| image:: https://badges.gitter.im/Blosc/c-blosc.svg
         :alt: Join the chat at https://gitter.im/Blosc/c-blosc
         :target: https://gitter.im/Blosc/c-blosc?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
-.. |travis| image:: https://travis-ci.org/Blosc/c-blosc2.svg?branch=master
-        :target: https://travis-ci.org/Blosc/c-blosc2
+.. |actions| image:: https://github.com/Blosc/c-blosc2/workflows/CI%20CMake/badge.svg
+        :target: https://github.com/Blosc/c-blosc2/actions?query=workflow%3A%22CI+CMake%22
 
-.. |appveyor| image:: https://ci.appveyor.com/api/projects/status/3mlyjc1ak0lbkmte/branch/master?svg=true
+.. |appveyor| image:: https://ci.appveyor.com/api/projects/status/qiaxywqrouj6nkug/branch/master?svg=true
         :target: https://ci.appveyor.com/project/FrancescAlted/c-blosc2/branch/master
 
 .. |numfocus| image:: https://img.shields.io/badge/powered%20by-NumFOCUS-orange.svg?style=flat&colorA=E1523D&colorB=007D8A
@@ -48,7 +47,7 @@ Another important aspect of C-Blosc2 is that it splits large datasets in smaller
 Multidimensional containers
 ===========================
 
-As said, C-Blosc2 adds a powerful mechanism for adding different metalayers on top of its containers.  `Caterva <https://github.com/Blosc/Caterva>`_ is a sibling library that adds such a metalayer specifying not only the dimensionality of a dataset, but also the dimensionality of the chunks inside the dataset.  In addition, Caterva adds machinery for retrieving arbitrary multi-dimensional slices (aka hyper-slices) out of the multi-dimensional containers in the most efficient way.  Hence, Caterva brings the convenience of multi-dimensional containers to your application very easily.  For more info, check out the `Caterva documentation<https://caterva.readthedocs.io>`_.
+As said, C-Blosc2 adds a powerful mechanism for adding different metalayers on top of its containers.  `Caterva <https://github.com/Blosc/Caterva>`_ is a sibling library that adds such a metalayer specifying not only the dimensionality of a dataset, but also the dimensionality of the chunks inside the dataset.  In addition, Caterva adds machinery for retrieving arbitrary multi-dimensional slices (aka hyper-slices) out of the multi-dimensional containers in the most efficient way.  Hence, Caterva brings the convenience of multi-dimensional containers to your application very easily.  For more info, check out the `Caterva documentation <https://caterva.readthedocs.io>`_.
 
 Compiling the C-Blosc2 library with CMake
 =========================================

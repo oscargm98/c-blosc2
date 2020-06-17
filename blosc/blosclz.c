@@ -20,12 +20,6 @@
 
 
 /*
- * Check for bound when decompressing.
- * It is a good idea to define this for safety by default.
- */
-#define BLOSCLZ_SAFE
-
-/*
  * Give hints to the compiler for branch prediction optimization.
  */
 #if defined(__GNUC__) && (__GNUC__ > 2)
@@ -55,20 +49,11 @@
   #define BLOSCLZ_READU32(p) *((const uint32_t*)(p))
 #endif
 
-#define HASH_LOG (14)
-
-/* Simple, but pretty effective hash function for 3-byte sequence */
-/* This is the original hash function used in fastlz
- * #define _HASH_FUNCTION(v, p, h) {                      \
- * v = BLOSCLZ_READU16(p);                                \
- * v ^= BLOSCLZ_READU16(p + 1) ^ ( v >> (16 - h));        \
- * v &= (1 << h) - 1;                                     \
- *}
- */
+#define HASH_LOG (12)
 
 // This is used in LZ4 and seems to work pretty well here too
-#define HASH_FUNCTION(v, p, h) {                          \
-  v = ((BLOSCLZ_READU32(p) * 2654435761U) >> (32U - h));  \
+#define HASH_FUNCTION(v, s, h) {                          \
+  v = (s * 2654435761U) >> (32U - h);  \
 }
 
 
@@ -81,15 +66,10 @@
   if (BLOSCLZ_UNEXPECT_CONDITIONAL(copy == MAX_COPY)) {  \
     copy = 0;                                            \
     *op++ = MAX_COPY-1;                                  \
-    nmax_copies++;                                       \
-    if (nmax_copies > max_nmax_copies)                   \
-      goto out;                                          \
   }                                                      \
-  continue;                                              \
 }
 
 #define IP_BOUNDARY 2
-
 
 #if defined(__AVX2__)
 static uint8_t *get_run_32(uint8_t *ip, const uint8_t *ip_bound, const uint8_t *ref) {
@@ -330,47 +310,46 @@ static uint8_t *get_match_32(uint8_t *ip, const uint8_t *ip_bound, const uint8_t
 #endif
 
 
-int blosclz_compress(const int opt_level, const void* input, int length,
-                     void* output, int maxout, bool shuffle) {
-  uint8_t* ip = (uint8_t*)input;
+int blosclz_compress(const int clevel, const void* input, int length,
+                     void* output, int maxout) {
   uint8_t* ibase = (uint8_t*)input;
-  uint8_t* ip_bound = ip + length - IP_BOUNDARY;
-  uint8_t* ip_limit = ip + length - 12;
+  uint8_t* ip = ibase;
+  uint8_t* ip_bound = ibase + length - IP_BOUNDARY;
+  uint8_t* ip_limit = ibase + length - 12;
   uint8_t* op = (uint8_t*)output;
   uint8_t* op_limit;
-  uint16_t htab[1U << (uint8_t)HASH_LOG];
-  int32_t hval;
+  uint32_t htab[1U << (uint8_t)HASH_LOG];
+  uint32_t hval;
+  uint32_t seq;
   uint8_t copy;
-  uint32_t nmax_copies = 0;
 
-  double maxlength_[10] = {-1, .1, .2, .3, .4, .6, .9, .95, 1.0, 1.0};
-  int32_t maxlength = (int32_t)(length * maxlength_[opt_level]);
+  // Minimum cratios before issuing and _early giveup_
+  // Remind that blosclz is not meant for cratios <= 2 (too costly to decompress)
+  double maxlength_[10] = {-1, .07, .1, .15, .25, .45, .5, .5, .5, .5};
+  int32_t maxlength = (int32_t)(length * maxlength_[clevel]);
   if (maxlength > (int32_t)maxout) {
     maxlength = (int32_t)maxout;
   }
   op_limit = op + maxlength;
 
-  uint8_t hashlog_[10] = {0, HASH_LOG - 4, HASH_LOG - 4, HASH_LOG - 3 , HASH_LOG - 2,
-                           HASH_LOG - 1, HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG};
-  uint8_t hashlog = hashlog_[opt_level];
+  uint8_t hashlog_[10] = {0, HASH_LOG - 2, HASH_LOG - 1, HASH_LOG, HASH_LOG,
+                           HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG};
+  uint8_t hashlog = hashlog_[clevel];
   // Initialize the hash table to distances of 0
   for (unsigned i = 0; i < (1U << hashlog); i++) {
     htab[i] = 0;
   }
 
-  // The maximum amount of consecutive MAX_COPY copies before giving up
-  // 0 means something very close to RLE
-  uint8_t max_nmax_copies_[10] = {255, 0, 8, 8, 16, 32, 32, 32, 32, 64};  // 255 never used
-  uint8_t max_nmax_copies = max_nmax_copies_[opt_level];
-
-  /* output buffer cannot be less than 66 bytes or we can get into trouble */
-  if (BLOSCLZ_UNEXPECT_CONDITIONAL(maxout < 66 || length < 4)) {
+  /* input and output buffer cannot be less than 16 and 66 bytes or we can get into trouble */
+  if (length < 16 || maxout < 66) {
     return 0;
   }
 
   /* we start with literal copy */
-  copy = 2;
+  copy = 4;
   *op++ = MAX_COPY - 1;
+  *op++ = *ip++;
+  *op++ = *ip++;
   *op++ = *ip++;
   *op++ = *ip++;
 
@@ -378,53 +357,41 @@ int blosclz_compress(const int opt_level, const void* input, int length,
   while (BLOSCLZ_EXPECT_CONDITIONAL(ip < ip_limit)) {
     const uint8_t* ref;
     uint32_t distance;
-    uint32_t len = 3;         /* minimum match length */
     uint8_t* anchor = ip;    /* comparison starting-point */
 
-    /* check for a run */
-    if (ip[0] == ip[-1] && BLOSCLZ_READU16(ip - 1) == BLOSCLZ_READU16(ip + 1)) {
-      distance = 1;
-      ref = anchor - 1 + 3;
-      goto match;
-    }
-
     /* find potential match */
-    HASH_FUNCTION(hval, ip, hashlog)
+    seq = BLOSCLZ_READU32(ip);
+    HASH_FUNCTION(hval, seq, hashlog)
     ref = ibase + htab[hval];
 
     /* calculate distance to the match */
     distance = (int32_t)(anchor - ref);
 
-    /* update hash table if necessary */
-    /* not exactly sure why masking the distance works best, but this is what the experiments say */
-    if (!shuffle || (distance & (MAX_COPY - 1)) == 0) {
-      htab[hval] = (uint16_t) (anchor - ibase);
-    }
+    /* update hash table */
+    htab[hval] = (uint32_t) (anchor - ibase);
 
     if (distance == 0 || (distance >= MAX_FARDISTANCE)) {
       LITERAL(ip, op, op_limit, anchor, copy)
+      continue;
     }
 
     /* is this a match? check the first 4 bytes */
-    if (BLOSCLZ_READU32(ref) == BLOSCLZ_READU32(ip)) {
-      len = 4;
+    if (BLOSCLZ_UNEXPECT_CONDITIONAL(BLOSCLZ_READU32(ref) == BLOSCLZ_READU32(ip))) {
       ref += 4;
     }
-    /* check just the first 3 bytes */
-    else if (*ref++ != *ip++ || *ref++ != *ip++ || *ref++ != *ip) {
+    else {
       /* no luck, copy as a literal */
       LITERAL(ip, op, op_limit, anchor, copy)
+      continue;
     }
 
-    match:
-
     /* last matched byte */
-    ip = anchor + len;
+    ip = anchor + 4;
 
     /* distance is biased */
     distance--;
 
-    if (!distance) {
+    if (BLOSCLZ_UNEXPECT_CONDITIONAL(!distance)) {
       /* zero distance means a run */
 #if defined(__AVX2__)
       ip = get_run_32(ip, ip_bound, ref);
@@ -456,11 +423,12 @@ int blosclz_compress(const int opt_level, const void* input, int length,
     copy = 0;
 
     /* length is biased, '1' means a match of 3 bytes */
-    ip -= 3;
-    len = (int32_t)(ip - anchor);
-
-    /* check that we have space enough to encode the match for all the cases */
-    if (BLOSCLZ_UNEXPECT_CONDITIONAL(op + (len / 255) + 6 > op_limit)) goto out;
+    /* When we get back by 4 we obtain quite different compression properties.
+     * It looks like 4 is more useful in combination with bitshuffle and small typesizes
+     * (compress better and faster in e.g. `b2bench blosclz bitshuffle single 6 6291456 1 19`).
+     * Worth experimenting with this in the future.  For the time being, use 3 for high clevels. */
+    ip -= clevel > 8 ? 3 : 4;
+    long len = ip - anchor;
 
     /* encode the match */
     if (distance < MAX_DISTANCE) {
@@ -498,25 +466,24 @@ int blosclz_compress(const int opt_level, const void* input, int length,
     }
 
     /* update the hash at match boundary */
-    if (ip < ip_limit) {
-      HASH_FUNCTION(hval, ip, hashlog)
-      htab[hval] = (uint16_t)(ip - ibase);
-    }
-    ip += 2;
+    seq = BLOSCLZ_READU32(ip);
+    HASH_FUNCTION(hval, seq, hashlog)
+    htab[hval] = (uint32_t) (ip++ - ibase);
+    seq >>= 8U;
+    HASH_FUNCTION(hval, seq, hashlog)
+    htab[hval] = (uint32_t) (ip++ - ibase);
     /* assuming literal copy */
     *op++ = MAX_COPY - 1;
 
-    // reset the number of max copies
-    nmax_copies = 0;
   }
 
   /* left-over as literal copy */
   ip_bound++;
-  while (ip <= ip_bound) {
+  while (BLOSCLZ_UNEXPECT_CONDITIONAL(ip <= ip_bound)) {
     if (BLOSCLZ_UNEXPECT_CONDITIONAL(op + 2 > op_limit)) goto out;
     *op++ = *ip++;
     copy++;
-    if (copy == MAX_COPY) {
+    if (BLOSCLZ_UNEXPECT_CONDITIONAL(copy == MAX_COPY)) {
       copy = 0;
       *op++ = MAX_COPY - 1;
     }
@@ -593,22 +560,27 @@ static unsigned char* copy_match_16(unsigned char *op, const unsigned char *matc
 }
 #endif
 
+// LZ4 wildCopy which can reach excellent copy bandwidth (even if insecure)
+static inline void wild_copy(uint8_t *out, const uint8_t* from, uint8_t* end) {
+  uint8_t* d = out;
+  const uint8_t* s = from;
+  uint8_t* const e = end;
+
+  do { memcpy(d,s,8); d+=8; s+=8; } while (d<e);
+}
 
 int blosclz_decompress(const void* input, int length, void* output, int maxout) {
   const uint8_t* ip = (const uint8_t*)input;
   const uint8_t* ip_limit = ip + length;
   uint8_t* op = (uint8_t*)output;
   uint32_t ctrl;
-  int32_t loop = 1;
-#ifdef BLOSCLZ_SAFE
   uint8_t* op_limit = op + maxout;
   if (BLOSCLZ_UNEXPECT_CONDITIONAL(length == 0)) {
     return 0;
   }
-#endif
   ctrl = (*ip++) & 31U;
 
-  do {
+  while (1) {
     uint8_t* ref = op;
     int32_t len = ctrl >> 5U;
     int32_t ofs = (ctrl & 31U) << 8U;
@@ -617,22 +589,35 @@ int blosclz_decompress(const void* input, int length, void* output, int maxout) 
       uint8_t code;
       len--;
       ref -= ofs;
-      if (len == 7 - 1)
+      if (len == 7 - 1) {
         do {
+          if (BLOSCLZ_UNEXPECT_CONDITIONAL(ip + 1 >= ip_limit)) {
+            return 0;
+          }
           code = *ip++;
           len += code;
         } while (code == 255);
+      }
+      else {
+        if (BLOSCLZ_UNEXPECT_CONDITIONAL(ip + 1 >= ip_limit)) {
+          return 0;
+        }
+      }
       code = *ip++;
       ref -= code;
 
       /* match from 16-bit distance */
-      if (BLOSCLZ_UNEXPECT_CONDITIONAL(code == 255)) if (BLOSCLZ_EXPECT_CONDITIONAL(ofs == (31U << 8U))) {
-        ofs = (*ip++) << 8U;
-        ofs += *ip++;
-        ref = op - ofs - MAX_DISTANCE;
+      if (BLOSCLZ_UNEXPECT_CONDITIONAL(code == 255)) {
+        if (BLOSCLZ_EXPECT_CONDITIONAL(ofs == (31U << 8U))) {
+          if (BLOSCLZ_UNEXPECT_CONDITIONAL(ip + 1 >= ip_limit)) {
+            return 0;
+          }
+          ofs = (*ip++) << 8U;
+          ofs += *ip++;
+          ref = op - ofs - MAX_DISTANCE;
+        }
       }
 
-#ifdef BLOSCLZ_SAFE
       if (BLOSCLZ_UNEXPECT_CONDITIONAL(op + len + 3 > op_limit)) {
         return 0;
       }
@@ -640,12 +625,11 @@ int blosclz_decompress(const void* input, int length, void* output, int maxout) 
       if (BLOSCLZ_UNEXPECT_CONDITIONAL(ref - 1 < (uint8_t*)output)) {
         return 0;
       }
-#endif
 
       if (BLOSCLZ_EXPECT_CONDITIONAL(ip < ip_limit))
         ctrl = *ip++;
       else
-        loop = 0;
+        break;
 
       if (ref == op) {
         /* optimized copy for a run */
@@ -665,8 +649,16 @@ int blosclz_decompress(const void* input, int length, void* output, int maxout) 
         }
         else {
 #endif
-          // We absolutely need a copy_match here
-          op = copy_match(op, ref, (unsigned) len);
+          uint8_t* endcpy = op + len;
+          if ((op - ref < 8) || (op_limit - endcpy < 8)) {
+            // We absolutely need a copy_match here
+            op = copy_match(op, ref, (unsigned) len);
+          }
+          else {
+            wild_copy(op, ref, endcpy);
+            op = endcpy;
+          }
+
 #ifdef __AVX2__
         }
 #endif
@@ -674,26 +666,24 @@ int blosclz_decompress(const void* input, int length, void* output, int maxout) 
     }
     else {
       ctrl++;
-#ifdef BLOSCLZ_SAFE
       if (BLOSCLZ_UNEXPECT_CONDITIONAL(op + ctrl > op_limit)) {
         return 0;
       }
       if (BLOSCLZ_UNEXPECT_CONDITIONAL(ip + ctrl > ip_limit)) {
         return 0;
       }
-#endif
 
-      // memcpy(op, ip, ctrl); op += ctrl; ip += ctrl;
+      memcpy(op, ip, ctrl); op += ctrl; ip += ctrl;
       // On GCC-6, fastcopy this is still faster than plain memcpy
       // However, using recent CLANG/LLVM 9.0, there is almost no difference
       // in performance.
-      op = fastcopy(op, ip, (unsigned) ctrl); ip += ctrl;
+      // And starting on CLANG/LLVM 10 and GCC 9, memcpy is generally faster.
+      // op = fastcopy(op, ip, (unsigned) ctrl); ip += ctrl;
 
-      loop = (int32_t)BLOSCLZ_EXPECT_CONDITIONAL(ip < ip_limit);
-      if (loop)
-        ctrl = *ip++;
+      if (BLOSCLZ_UNEXPECT_CONDITIONAL(ip >= ip_limit)) break;
+      ctrl = *ip++;
     }
-  } while (BLOSCLZ_EXPECT_CONDITIONAL(loop));
+  }
 
   return (int)(op - (uint8_t*)output);
 }

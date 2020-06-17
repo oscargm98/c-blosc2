@@ -23,7 +23,7 @@ int size = 7 * 12 * 13 * 16 * 24 * 10;  /* must be divisible by typesize */
 
 
 /* Check compressor */
-static char *test_delta() {
+static char *test_delta(void) {
   int cbytes2;
   int buf_equal;
 
@@ -98,8 +98,8 @@ static char *test_delta() {
   blosc_set_delta(1);
   cbytes2 = blosc_compress(clevel, doshuffle, (size_t)typesize, (size_t)size, src,
                            dest, (size_t)size + BLOSC_MAX_OVERHEAD);
-  if ((typesize % 12) == 0) {
-    // For typesizes 12 and 24 we do an exception and allow less compression
+  if ((typesize == 12) || (typesize == 15) || (typesize == 24)) {
+    // For typesizes 12, 15 and 24 we make an exception and allow less compression
     if ((2 * cbytes2) > (3 * cbytes)) {
       fprintf(stderr, "Failed test for DELTA and typesize: %d\n", typesize);
       fprintf(stderr, "Size with no DELTA: %d.  Size with DELTA: %d\n",
@@ -128,7 +128,7 @@ static char *test_delta() {
   return 0;
 }
 
-static char *all_tests() {
+static char *all_tests(void) {
   typesize = 1;
   mu_run_test(test_delta);
   typesize = 2;
@@ -153,7 +153,7 @@ static char *all_tests() {
 
 #define BUFFER_ALIGN_SIZE   32
 
-int main() {
+int main(void) {
   char *result;
 
   blosc_init();

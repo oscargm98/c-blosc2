@@ -288,17 +288,22 @@ void print_compress_info(void) {
   printf("Supported compression libraries:\n");
   ret = blosc_get_complib_info("blosclz", &name, &version);
   if (ret >= 0) printf("  %s: %s\n", name, version);
+  free(name); free(version);
   ret = blosc_get_complib_info("lz4", &name, &version);
   if (ret >= 0) printf("  %s: %s\n", name, version);
+  free(name); free(version);
   ret = blosc_get_complib_info("lizard", &name, &version);
   if (ret >= 0) printf("  %s: %s\n", name, version);
+  free(name); free(version);
   ret = blosc_get_complib_info("snappy", &name, &version);
   if (ret >= 0) printf("  %s: %s\n", name, version);
+  free(name); free(version);
   ret = blosc_get_complib_info("zlib", &name, &version);
   if (ret >= 0) printf("  %s: %s\n", name, version);
+  free(name); free(version);
   ret = blosc_get_complib_info("zstd", &name, &version);
   if (ret >= 0) printf("  %s: %s\n", name, version);
-
+  free(name); free(version);
 }
 
 
@@ -312,7 +317,7 @@ int main(int argc, char* argv[]) {
   int extreme_suite = 0;
   int debug_suite = 0;
   int nthreads = 4;                     /* The number of threads */
-  int size = 4 * MB;                      /* Buffer size */
+  int size = 4 * MB;                    /* Buffer size */
   int elsize = 4;                       /* Datatype size */
   int rshift = 19;                      /* Significant bits */
 #if defined(__arm__)
