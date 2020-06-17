@@ -17,8 +17,8 @@
 #endif
 
 /* Have problems using posix barriers when symbol value is 200112L */
-/* This requires more investigation, but will work for the moment */
-#if defined(_POSIX_BARRIERS) && (_POSIX_BARRIERS >= 200112L)
+/* Requires more investigation, but this will work for the moment */
+#if defined(_POSIX_BARRIERS) && ( (_POSIX_BARRIERS - 20012L) >= 0 && _POSIX_BARRIERS != 200112L)
 #define BLOSC_POSIX_BARRIERS
 #endif
 
@@ -79,8 +79,12 @@ struct blosc2_context_s {
   /* prefilter function */
   blosc2_prefilter_params *pparams;
   /* prefilter params */
-
-  /* metadata for filters */
+  bool* block_maskout;
+  /* The blocks that are not meant to be decompressed.
+   * If NULL (default), all blocks in a chunk should be read. */
+  int block_maskout_nitems;
+  /* The number of items in block_maskout array (must match
+   * the number of blocks in chunk) */
   blosc2_schunk* schunk;
   /* Associated super-chunk (if available) */
   struct thread_context* serial_context;
@@ -124,7 +128,8 @@ struct thread_context {
   uint8_t* tmp2;
   uint8_t* tmp3;
   uint8_t* tmp4;
-  int32_t tmpblocksize; /* keep track of how big the temporary buffers are */
+  int32_t tmp_blocksize; /* the blocksize for different temporaries */
+  size_t tmp_nbytes;   /* keep track of how big the temporary buffers are */
 #if defined(HAVE_ZSTD)
   /* The contexts for ZSTD */
   ZSTD_CCtx* zstd_cctx;

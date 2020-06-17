@@ -132,6 +132,9 @@ __cpuidex(int32_t cpuInfo[4], int32_t function_id, int32_t subfunction_id) {
 
 #define _XCR_XFEATURE_ENABLED_MASK 0
 
+// GCC folks added _xgetbv in immintrin.h starting in GCC 9
+// See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71659
+#if !(defined(_IMMINTRIN_H_INCLUDED) && (BLOSC_GCC_VERSION >= 900))
 /* Reads the content of an extended control register.
    https://software.intel.com/en-us/articles/how-to-detect-new-instruction-support-in-the-4th-generation-intel-core-processor-family
 */
@@ -150,7 +153,7 @@ _xgetbv(uint32_t xcr) {
     );
   return ((uint64_t)edx << 32) | eax;
 }
-
+#endif  // !(defined(_IMMINTRIN_H_INCLUDED) && (BLOSC_GCC_VERSION >= 900))
 #endif /* defined(_MSC_VER) */
 
 #ifndef _XCR_XFEATURE_ENABLED_MASK
@@ -274,7 +277,7 @@ return BLOSC_HAVE_NOTHING;
 
 #endif /* defined(SHUFFLE_AVX2_ENABLED) || defined(SHUFFLE_SSE2_ENABLED) */
 
-static shuffle_implementation_t get_shuffle_implementation() {
+static shuffle_implementation_t get_shuffle_implementation(void) {
   blosc_cpu_features cpu_features = blosc_get_cpu_features();
 #if defined(SHUFFLE_AVX2_ENABLED)
   if (cpu_features & BLOSC_HAVE_AVX2) {
@@ -358,7 +361,7 @@ __forceinline
 #else
 inline
 #endif
-void init_shuffle_implementation() {
+void init_shuffle_implementation(void) {
   /* Initialization could (in rare cases) take place concurrently on
      multiple threads, but it shouldn't matter because the
      initialization should return the same result on each thread (so
@@ -417,11 +420,11 @@ bitshuffle(const int32_t bytesoftype, const int32_t blocksize,
   size_t size = blocksize / bytesoftype;
   /* bitshuffle only supports a number of elements that is a multiple of 8. */
   size -= size % 8;
-  int ret = (host_implementation.bitshuffle)((void *) _src, (void *) _dest,
+  int ret = (int) (host_implementation.bitshuffle)((void *) _src, (void *) _dest,
                                              size, bytesoftype, (void *) _tmp);
   if (ret < 0) {
     // Some error in bitshuffle (should not happen)
-    printf(stderr, "the impossible happened: the bitshuffle filter failed!");
+    fprintf(stderr, "the impossible happened: the bitshuffle filter failed!");
     return ret;
   }
 
@@ -446,12 +449,12 @@ int32_t bitunshuffle(const int32_t bytesoftype, const int32_t blocksize,
     if ((size % 8) == 0) {
       /* The number of elems is a multiple of 8 which is supported by
          bitshuffle. */
-      int ret = (host_implementation.bitunshuffle)((void *) _src, (void *) _dest,
+      int ret = (int) (host_implementation.bitunshuffle)((void *) _src, (void *) _dest,
                                                    blocksize / bytesoftype,
                                                    bytesoftype, (void *) _tmp);
       if (ret < 0) {
         // Some error in bitshuffle (should not happen)
-        printf(stderr, "the impossible happened: the bitunshuffle filter failed!");
+        fprintf(stderr, "the impossible happened: the bitunshuffle filter failed!");
         return ret;
       }
       /* Copy the leftovers (we do so starting from c-blosc 1.18 on) */
@@ -465,10 +468,10 @@ int32_t bitunshuffle(const int32_t bytesoftype, const int32_t blocksize,
   else {
     /* bitshuffle only supports a number of bytes that is a multiple of 8. */
     size -= size % 8;
-    int ret = (host_implementation.bitunshuffle)((void *) _src, (void *) _dest,
+    int ret = (int) (host_implementation.bitunshuffle)((void *) _src, (void *) _dest,
                                                  size, bytesoftype, (void *) _tmp);
     if (ret < 0) {
-      printf(stderr, "the impossible happened: the bitunshuffle filter failed!");
+      fprintf(stderr, "the impossible happened: the bitunshuffle filter failed!");
       return ret;
     }
 

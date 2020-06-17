@@ -15,7 +15,6 @@
 #include "blosc-private.h"
 #include "context.h"
 #include "frame.h"
-#include "zstd.h"
 
 #if defined(_WIN32) && !defined(__MINGW32__)
   #include <windows.h>
@@ -224,7 +223,6 @@ int blosc2_schunk_append_buffer(blosc2_schunk *schunk, void *src, size_t nbytes)
   return nchunks;
 }
 
-
 /* Decompress and return a chunk that is part of a super-chunk. */
 int blosc2_schunk_decompress_chunk(blosc2_schunk *schunk, int nchunk,
                                    void *dest, size_t nbytes) {
@@ -251,7 +249,7 @@ int blosc2_schunk_decompress_chunk(blosc2_schunk *schunk, int nchunk,
       return -11;
     }
   } else {
-    chunksize = frame_decompress_chunk(schunk->frame, nchunk, dest, nbytes);
+    chunksize = frame_decompress_chunk(schunk->dctx, schunk->frame, nchunk, dest, nbytes);
     if (chunksize < 0) {
       return -10;
     }
@@ -423,7 +421,7 @@ int blosc2_get_metalayer(blosc2_schunk *schunk, const char *name, uint8_t **cont
 /* Update the content of the usermeta chunk. */
 int blosc2_update_usermeta(blosc2_schunk *schunk, uint8_t *content, int32_t content_len,
                            blosc2_cparams cparams) {
-  if (content_len > (1u << 31u)) {
+  if ((uint32_t) content_len > (1u << 31u)) {
     fprintf(stderr, "Error: content_len cannot exceed 2 GB");
     return -1;
   }

@@ -19,8 +19,6 @@
 #include "blosc-private.h"
 #include "blosc2-common.h"
 
-#include "fastcopy.h"
-
 #if defined(USING_CMAKE)
   #include "config.h"
 #endif /*  USING_CMAKE */
@@ -330,6 +328,7 @@ int blosc_compname_to_compcode(const char* compname) {
 #if defined(HAVE_LZ4)
 static int lz4_wrap_compress(const char* input, size_t input_length,
                              char* output, size_t maxout, int accel, void* hash_table) {
+  BLOSC_UNUSED_PARAM(accel);
   int cbytes;
 #ifdef HAVE_IPP
   if (hash_table == NULL) {
@@ -598,9 +597,10 @@ int last_filter(const uint8_t* filters, char cmode) {
 }
 
 
-uint8_t* pipeline_c(blosc2_context* context, const int32_t bsize,
+uint8_t* pipeline_c(struct thread_context* thread_context, const int32_t bsize,
                     const uint8_t* src, const int32_t offset,
-                    uint8_t* dest, uint8_t* tmp, uint8_t* tmp2) {
+                    uint8_t* dest, uint8_t* tmp, uint8_t* tmp2, bool disable_filters) {
+  blosc2_context* context = thread_context->parent_context;
   uint8_t* _src = (uint8_t*)src + offset;
   uint8_t* _tmp = tmp;
   uint8_t* _dest = dest;
@@ -610,25 +610,24 @@ uint8_t* pipeline_c(blosc2_context* context, const int32_t bsize,
 
   /* Prefilter function */
   if (context->prefilter != NULL) {
-    // Create new prefilter parameters for this block
-    blosc2_prefilter_params pparams = {0};
+    // Create new prefilter parameters for this block (must be private for each thread)
+    blosc2_prefilter_params pparams;
+    memcpy(&pparams, context->pparams, sizeof(pparams));
     pparams.out = _dest;
     pparams.out_size = (size_t)bsize;
     pparams.out_typesize = typesize;
-    pparams.ninputs = context->pparams->ninputs;
-    pparams.user_data = context->pparams->user_data;
-    int ninputs = context->pparams->ninputs;
-    for (int i = 0; i < ninputs; i++) {
-      pparams.input_typesizes[i] = context->pparams->input_typesizes[i];
-      int32_t offset_i = (offset / typesize) * pparams.input_typesizes[i];
-      pparams.inputs[i] = context->pparams->inputs[i] + offset_i;
-    }
+    pparams.out_offset = offset;
+    pparams.tid = thread_context->tid;
+    pparams.ttmp = thread_context->tmp;
+    pparams.ttmp_nbytes = thread_context->tmp_nbytes;
+    pparams.ctx = context;
+
     if (context->prefilter(&pparams) != 0) {
       fprintf(stderr, "Execution of prefilter function failed\n");
       return NULL;
-    };
+    }
 
-    if (context->clevel == 0) {
+    if (context->clevel == 0 || disable_filters) {
       // No more filters are required
       return _dest;
     }
@@ -694,21 +693,24 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
   const char* compname;
   int accel;
   const uint8_t* _src;
-  uint8_t *_tmp = tmp, *_tmp2 = tmp2, *_tmp3 = thread_context->tmp4;
+  uint8_t *_tmp = tmp, *_tmp2 = tmp2;
+  uint8_t *_tmp3 = thread_context->tmp4;
   int last_filter_index = last_filter(context->filters, 'c');
 
   if (last_filter_index >= 0 || context->prefilter != NULL) {
     /* Apply the filter pipeline just for the prefilter */
     if (context->clevel == 0 && context->prefilter != NULL) {
       // We have finished, as we only need the prefilter output
-      _src = pipeline_c(context, bsize, src, offset, dest, _tmp2, _tmp3);
+      _src = pipeline_c(thread_context, bsize, src, offset, dest, _tmp2, _tmp3, false);
+
       if (_src == NULL) {
         return -9;  // signals a problem with the filter pipeline
       }
       return bsize;
     }
     /* Apply regular filter pipeline */
-    _src = pipeline_c(context, bsize, src, offset, _tmp, _tmp2, _tmp3);
+    _src = pipeline_c(thread_context, bsize, src, offset, _tmp, _tmp2, _tmp3, false);
+
     if (_src == NULL) {
       return -9;  // signals a problem with the filter pipeline
     }
@@ -749,13 +751,12 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
     if (dict_training) {
       // We are in the build dict state, so don't compress
       // TODO: copy only a percentage for sampling
-      fastcopy(dest, _src + j * neblock, (unsigned int)neblock);
+      memcpy(dest, _src + j * neblock, (unsigned int)neblock);
       cbytes = (int32_t)neblock;
     }
     else if (context->compcode == BLOSC_BLOSCLZ) {
       cbytes = blosclz_compress(context->clevel, _src + j * neblock,
-                                (int)neblock, dest, (int)maxout,
-                                context->filter_flags & BLOSC_DOSHUFFLE);
+                                (int)neblock, dest, (int)maxout);
     }
   #if defined(HAVE_LZ4)
     else if (context->compcode == BLOSC_LZ4) {
@@ -818,9 +819,12 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
         /* Before doing the copy, check that we are not running into a
            buffer overflow. */
         if ((ntbytes + neblock) > maxbytes) {
+          if (context->prefilter != NULL) {
+            context->src = pipeline_c(thread_context, bsize, src, offset, _tmp, _tmp2, _tmp3, true);
+          }
           return 0;    /* Non-compressible data */
         }
-        fastcopy(dest, _src + j * neblock, (unsigned int)neblock);
+        memcpy(dest, _src + j * neblock, (unsigned int)neblock);
         cbytes = neblock;
       }
       _sw32(dest - 4, cbytes);
@@ -864,7 +868,7 @@ int pipeline_d(blosc2_context* context, const int32_t bsize, uint8_t* dest,
           }
           // Check whether we have to copy the intermediate _dest buffer to final destination
           if (last_copy_filter && (filters_meta[i] % 2) == 1 && j == filters_meta[i]) {
-            fastcopy(dest + offset, _dest, (unsigned int)bsize);
+            memcpy(dest + offset, _dest, (unsigned int)bsize);
           }
         }
         break;
@@ -937,7 +941,14 @@ static int blosc_d(
   int32_t ntbytes = 0;           /* number of uncompressed bytes in block */
   uint8_t* _dest;
   int32_t typesize = context->typesize;
+  int32_t nblock = offset / context->blocksize;
   const char* compname;
+
+  if (context->block_maskout != NULL && context->block_maskout[nblock]) {
+    // Do not decompress, but act as if we successfully decompressed everything
+    return bsize;
+  }
+
   int last_filter_index = last_filter(filters, 'd');
 
   if ((last_filter_index >= 0) &&
@@ -965,7 +976,7 @@ static int blosc_d(
     ctbytes += (int32_t)sizeof(int32_t);
     /* Uncompress */
     if (cbytes == neblock) {
-      fastcopy(_dest, src, (unsigned int)neblock);
+      memcpy(_dest, src, (unsigned int)neblock);
       nbytes = (int32_t)neblock;
     }
     else {
@@ -1061,7 +1072,7 @@ static int serial_blosc(struct thread_context* thread_context) {
     if (context->do_compress) {
       if (memcpyed) {
         /* We want to memcpy only */
-        fastcopy(context->dest + BLOSC_MAX_OVERHEAD + j * context->blocksize,
+        memcpy(context->dest + BLOSC_MAX_OVERHEAD + j * context->blocksize,
                  context->src + j * context->blocksize,
                  (unsigned int)bsize);
         cbytes = (int32_t)bsize;
@@ -1080,7 +1091,7 @@ static int serial_blosc(struct thread_context* thread_context) {
     else {
       if (memcpyed) {
         /* We want to memcpy only */
-        fastcopy(context->dest + j * context->blocksize,
+        memcpy(context->dest + j * context->blocksize,
                  context->src + BLOSC_MAX_OVERHEAD + j * context->blocksize,
                  (unsigned int)bsize);
         cbytes = (int32_t)bsize;
@@ -1144,11 +1155,12 @@ static void init_thread_context(struct thread_context* thread_context, blosc2_co
   thread_context->tid = tid;
 
   ebsize = context->blocksize + context->typesize * (int32_t)sizeof(int32_t);
-  thread_context->tmp = my_malloc((size_t)3 * context->blocksize + ebsize);
+  thread_context->tmp_nbytes = (size_t)3 * context->blocksize + ebsize;
+  thread_context->tmp = my_malloc(thread_context->tmp_nbytes);
   thread_context->tmp2 = thread_context->tmp + context->blocksize;
   thread_context->tmp3 = thread_context->tmp + context->blocksize + ebsize;
   thread_context->tmp4 = thread_context->tmp + 2 * context->blocksize + ebsize;
-  thread_context->tmpblocksize = context->blocksize;
+  thread_context->tmp_blocksize = context->blocksize;
   #if defined(HAVE_ZSTD)
   thread_context->zstd_cctx = NULL;
   thread_context->zstd_dctx = NULL;
@@ -1157,7 +1169,7 @@ static void init_thread_context(struct thread_context* thread_context, blosc2_co
   /* Create the hash table for LZ4 in case we are using IPP */
 #ifdef HAVE_IPP
   IppStatus status;
-  int inlen = thread_context->tmpblocksize > 0 ? thread_context->tmpblocksize : 1 << 16;
+  int inlen = thread_context->tmp_blocksize > 0 ? thread_context->tmp_blocksize : 1 << 16;
   int hash_size = 0;
   status = ippsEncodeLZ4HashTableGetSize_8u(&hash_size);
   if (status != ippStsNoErr) {
@@ -1241,7 +1253,7 @@ static int do_job(blosc2_context* context) {
     if (context->serial_context == NULL) {
       context->serial_context = create_thread_context(context, 0);
     }
-    else if (context->blocksize != context->serial_context->tmpblocksize) {
+    else if (context->blocksize != context->serial_context->tmp_blocksize) {
       free_thread_context(context->serial_context);
       context->serial_context = create_thread_context(context, 0);
     }
@@ -1326,12 +1338,35 @@ static int initialize_context_compression(
     btune_next_blocksize(context);
   }
 
+  char* envvar = getenv("BLOSC_WARN");
+  int warnlvl = 0;
+  if (envvar != NULL) {
+    warnlvl = strtol(envvar, NULL, 10);
+  }
+
   /* Check buffer size limits */
   if (sourcesize > BLOSC_MAX_BUFFERSIZE) {
-    /* If buffer is too large, give up. */
-    fprintf(stderr, "Input buffer size cannot exceed %d bytes\n",
-            BLOSC_MAX_BUFFERSIZE);
-    return -1;
+    if (warnlvl > 0) {
+      fprintf(stderr, "Input buffer size cannot exceed %d bytes\n",
+              BLOSC_MAX_BUFFERSIZE);
+    }
+    return 0;
+  }
+
+  if (destsize < BLOSC_MAX_OVERHEAD) {
+    if (warnlvl > 0) {
+      fprintf(stderr, "Output buffer size should be larger than %d bytes\n",
+              BLOSC_MAX_OVERHEAD);
+    }
+    return 0;
+  }
+
+  if (destsize < BLOSC_MAX_OVERHEAD) {
+    if (warnlvl > 0) {
+      fprintf(stderr, "Output buffer size should be larger than %d bytes\n",
+              BLOSC_MAX_OVERHEAD);
+    }
+    return -2;
   }
 
   /* Compression level */
@@ -1392,7 +1427,20 @@ static int initialize_context_decompression(
   context->nblocks = context->sourcesize / context->blocksize;
   context->leftover = context->sourcesize % context->blocksize;
   context->nblocks = (context->leftover > 0) ?
-                     context->nblocks + 1 : context->nblocks;
+                      context->nblocks + 1 : context->nblocks;
+
+  // Some checks for malformed headers
+  if (context->blocksize <= 0 || context->blocksize > destsize ||
+      context->typesize <= 0 || context->typesize > BLOSC_MAX_TYPESIZE) {
+    return -1;
+  }
+
+  if (context->block_maskout != NULL && context->block_maskout_nitems != context->nblocks) {
+    fprintf(stderr, "The number of items in block_maskout (%d) must match the number"
+                    " of blocks in chunk (%d)", context->block_maskout_nitems, context->nblocks);
+    return -2;
+  }
+
   if ((context->header_flags[0] & BLOSC_DOSHUFFLE) &&
       (context->header_flags[0] & BLOSC_DOBITSHUFFLE)) {
     /* Extended header */
@@ -1622,7 +1670,7 @@ int blosc_compress_context(blosc2_context* context) {
       }
     }
     else {
-      fastcopy(context->dest + BLOSC_MAX_OVERHEAD, context->src, (unsigned int)context->sourcesize);
+      memcpy(context->dest + BLOSC_MAX_OVERHEAD, context->src, (unsigned int)context->sourcesize);
       ntbytes = (int)context->sourcesize + BLOSC_MAX_OVERHEAD;
     }
   }
@@ -1665,7 +1713,7 @@ int blosc2_compress_ctx(blosc2_context* context, size_t nbytes,
     context->clevel, context->filters, context->filters_meta,
     context->typesize, context->compcode, context->blocksize,
     context->new_nthreads, context->nthreads, context->schunk);
-  if (error < 0) {
+  if (error <= 0) {
     return error;
   }
 
@@ -1740,7 +1788,7 @@ int blosc2_compress_ctx(blosc2_context* context, size_t nbytes,
     context->output_bytes += sizeof(int32_t);
     /* Write the trained dict afterwards */
     context->dict_buffer = context->dest + context->output_bytes;
-    fastcopy(context->dict_buffer, dict_buffer, (unsigned int)dict_actual_size);
+    memcpy(context->dict_buffer, dict_buffer, (unsigned int)dict_actual_size);
     context->dict_cdict = ZSTD_createCDict(dict_buffer, dict_actual_size, 1);  // TODO: use get_accel()
     free(dict_buffer);      // the dictionary is copied in the header now
     context->output_bytes += (int32_t)dict_actual_size;
@@ -1894,13 +1942,17 @@ int blosc_compress(int clevel, int doshuffle, size_t typesize, size_t nbytes,
     g_schunk);
   free(filters);
   free(filters_meta);
-  if (error < 0)
+  if (error <= 0) {
+    pthread_mutex_unlock(&global_comp_mutex);
     return error;
+  }
 
   /* Write chunk header without extended header (Blosc1 compatibility mode) */
   error = write_compression_header(g_global_context, false);
-  if (error < 0)
+  if (error < 0) {
+    pthread_mutex_unlock(&global_comp_mutex);
     return error;
+  }
 
   result = blosc_compress_context(g_global_context);
 
@@ -1910,7 +1962,8 @@ int blosc_compress(int clevel, int doshuffle, size_t typesize, size_t nbytes,
 }
 
 
-int blosc_run_decompression_with_context(blosc2_context* context, const void* src, void* dest, size_t destsize) {
+int blosc_run_decompression_with_context(blosc2_context* context, const void* src, void* dest,
+                                         size_t destsize) {
   int32_t ntbytes;
   int error;
 
@@ -1927,8 +1980,12 @@ int blosc_run_decompression_with_context(blosc2_context* context, const void* sr
 
   /* Check whether this buffer is memcpy'ed */
   if (*(context->header_flags) & BLOSC_MEMCPYED) {
-    fastcopy(dest, (uint8_t*)src + BLOSC_MAX_OVERHEAD, (unsigned int)context->sourcesize);
+    // Check that we have space enough in destination to copy
     ntbytes = (int32_t)context->sourcesize;
+    if (destsize < (size_t)ntbytes) {
+      return -1;
+    }
+    memcpy(dest, (uint8_t*)src + BLOSC_MAX_OVERHEAD, (unsigned int)ntbytes);
   }
   else {
     /* Do the actual decompression */
@@ -1954,6 +2011,13 @@ int blosc2_decompress_ctx(
   }
 
   result = blosc_run_decompression_with_context(context, src, dest, destsize);
+
+  // Reset a possible block_maskout
+  if (context->block_maskout != NULL) {
+    free(context->block_maskout);
+    context->block_maskout = NULL;
+  }
+  context->block_maskout_nitems = 0;
 
   return result;
 }
@@ -2046,6 +2110,11 @@ int _blosc_getitem(blosc2_context* context, const void* src, int start,
     bstarts = (int32_t*)(_src + BLOSC_MIN_HEADER_LENGTH);
   }
 
+  // Some checks for malformed buffers
+  if (blocksize <= 0 || blocksize > nbytes || typesize <= 0 || typesize > BLOSC_MAX_TYPESIZE) {
+    return -1;
+  }
+
   /* Compute some params */
   /* Total blocks */
   nblocks = nbytes / blocksize;
@@ -2088,7 +2157,7 @@ int _blosc_getitem(blosc2_context* context, const void* src, int start,
     /* Do the actual data copy */
     if (flags & BLOSC_MEMCPYED) {
       /* We want to memcpy only */
-      fastcopy((uint8_t*)dest + ntbytes,
+      memcpy((uint8_t*)dest + ntbytes,
                (uint8_t*)src + BLOSC_MAX_OVERHEAD + j * blocksize + startb,
                (unsigned int)bsize2);
       cbytes = (int)bsize2;
@@ -2097,30 +2166,30 @@ int _blosc_getitem(blosc2_context* context, const void* src, int start,
       struct thread_context* scontext = context->serial_context;
 
       /* Resize the temporaries in serial context if needed */
-      if (blocksize != scontext->tmpblocksize) {
+      if (blocksize != scontext->tmp_blocksize) {
         my_free(scontext->tmp);
-        scontext->tmp = my_malloc(3 * (size_t)(blocksize + ebsize));
+        scontext->tmp_nbytes = (size_t)3 * context->blocksize + ebsize;
+        scontext->tmp = my_malloc(scontext->tmp_nbytes);
         scontext->tmp2 = scontext->tmp + blocksize;
         scontext->tmp3 = scontext->tmp + blocksize + ebsize;
         scontext->tmp4 = scontext->tmp + 2 * blocksize + ebsize;
-        scontext->tmpblocksize = (int32_t)blocksize;
+        scontext->tmp_blocksize = (int32_t)blocksize;
       }
 
-      /* Regular decompression */
-      // If the block is aligned and the worst case fits in destination,
-      // let's avoid a copy
-      bool safe_nblock = ((startb == 0) && (ntbytes + blocksize <= (nitems * typesize)));
-      uint8_t *tmp = safe_nblock ? dest + ntbytes : scontext->tmp2;
+      // Regular decompression.  Put results in tmp2.
+      // If the block is aligned and the worst case fits in destination, let's avoid a copy
+      bool get_single_block = ((startb == 0) && (bsize == nitems * typesize));
+      uint8_t* tmp2 = get_single_block ? dest : scontext->tmp2;
       cbytes = blosc_d(context->serial_context, bsize, leftoverblock,
                        (uint8_t*)src + sw32_(bstarts + j),
-                       tmp, 0, scontext->tmp, scontext->tmp3);
+                       tmp2, 0, scontext->tmp, scontext->tmp3);
       if (cbytes < 0) {
         ntbytes = cbytes;
         break;
       }
-      /* Copy to destination if necessary */
-      if (!safe_nblock) {
-        fastcopy((uint8_t *)dest + ntbytes, tmp + startb, (unsigned int)bsize2);
+      if (!get_single_block) {
+        /* Copy to destination */
+        memcpy((uint8_t *) dest + ntbytes, tmp2 + startb, (unsigned int) bsize2);
       }
       cbytes = (int)bsize2;
     }
@@ -2199,10 +2268,8 @@ static void t_blosc_do_job(void *ctxt)
   /* Parameters for threads */
   int32_t blocksize;
   int32_t ebsize;
-  int32_t compress;
+  bool compress = context->do_compress != 0;
   int32_t maxbytes;
-  int32_t ntbytes;
-  int32_t flags;
   int32_t nblocks;
   int32_t leftover;
   int32_t leftover2;
@@ -2216,8 +2283,6 @@ static void t_blosc_do_job(void *ctxt)
   /* Get parameters for this thread before entering the main loop */
   blocksize = context->blocksize;
   ebsize = blocksize + context->typesize * sizeof(int32_t);
-  compress = context->do_compress;
-  flags = *(context->header_flags);
   maxbytes = context->destsize;
   nblocks = context->nblocks;
   leftover = context->leftover;
@@ -2226,58 +2291,55 @@ static void t_blosc_do_job(void *ctxt)
   dest = context->dest;
 
   /* Resize the temporaries if needed */
-  if (blocksize != thcontext->tmpblocksize) {
+  if (blocksize != thcontext->tmp_blocksize) {
     my_free(thcontext->tmp);
-    thcontext->tmp = my_malloc((size_t)3 * blocksize + ebsize);
+    thcontext->tmp_nbytes = (size_t)3 * context->blocksize + ebsize;
+    thcontext->tmp = my_malloc(thcontext->tmp_nbytes);
     thcontext->tmp2 = thcontext->tmp + blocksize;
     thcontext->tmp3 = thcontext->tmp + blocksize + ebsize;
     thcontext->tmp4 = thcontext->tmp + 2 * blocksize + ebsize;
-    thcontext->tmpblocksize = blocksize;
+    thcontext->tmp_blocksize = blocksize;
   }
 
   tmp = thcontext->tmp;
   tmp2 = thcontext->tmp2;
   tmp3 = thcontext->tmp3;
 
-  ntbytes = 0;                /* only useful for decompression */
-
-  if (compress && !(flags & BLOSC_MEMCPYED)) {
-    /* Compression always has to follow the block order */
+  // Determine whether we can do a static distribution of workload among different threads
+  bool memcpyed = *(context->header_flags) & (unsigned)BLOSC_MEMCPYED;
+  bool static_schedule = (!compress || memcpyed) && context->block_maskout == NULL;
+  if (static_schedule) {
+      /* Blocks per thread */
+      tblocks = nblocks / context->nthreads;
+      leftover2 = nblocks % context->nthreads;
+      tblocks = (leftover2 > 0) ? tblocks + 1 : tblocks;
+      nblock_ = thcontext->tid * tblocks;
+      tblock = nblock_ + tblocks;
+      if (tblock > nblocks) {
+          tblock = nblocks;
+      }
+  }
+  else {
+    // Use dynamic schedule via a queue.  Get the next block.
     pthread_mutex_lock(&context->count_mutex);
     context->thread_nblock++;
     nblock_ = context->thread_nblock;
     pthread_mutex_unlock(&context->count_mutex);
     tblock = nblocks;
   }
-  else {
-    /* Decompression can happen using any order.  We choose
-      sequential block order on each thread */
-
-    /* Blocks per thread */
-    tblocks = nblocks / context->nthreads;
-    leftover2 = nblocks % context->nthreads;
-    tblocks = (leftover2 > 0) ? tblocks + 1 : tblocks;
-
-    nblock_ = thcontext->tid * tblocks;
-    tblock = nblock_ + tblocks;
-    if (tblock > nblocks) {
-      tblock = nblocks;
-    }
-  }
 
   /* Loop over blocks */
   leftoverblock = 0;
-  while ((nblock_ < tblock) &&
-          (context->thread_giveup_code > 0)) {
+  while ((nblock_ < tblock) && (context->thread_giveup_code > 0)) {
     bsize = blocksize;
     if (nblock_ == (nblocks - 1) && (leftover > 0)) {
       bsize = leftover;
       leftoverblock = 1;
     }
     if (compress) {
-      if (flags & BLOSC_MEMCPYED) {
+      if (memcpyed) {
         /* We want to memcpy only */
-        fastcopy(dest + BLOSC_MAX_OVERHEAD + nblock_ * blocksize,
+        memcpy(dest + BLOSC_MAX_OVERHEAD + nblock_ * blocksize,
                   src + nblock_ * blocksize, (unsigned int)bsize);
         cbytes = (int32_t)bsize;
       }
@@ -2292,9 +2354,9 @@ static void t_blosc_do_job(void *ctxt)
       }
     }
     else {
-      if (flags & BLOSC_MEMCPYED) {
+      if (memcpyed) {
         /* We want to memcpy only */
-        fastcopy(dest + nblock_ * blocksize,
+        memcpy(dest + nblock_ * blocksize,
                   src + BLOSC_MAX_OVERHEAD + nblock_ * blocksize, (unsigned int)bsize);
         cbytes = (int32_t)bsize;
       }
@@ -2319,7 +2381,7 @@ static void t_blosc_do_job(void *ctxt)
       break;
     }
 
-    if (compress && !(flags & BLOSC_MEMCPYED)) {
+    if (compress && !memcpyed) {
       /* Start critical section */
       pthread_mutex_lock(&context->count_mutex);
       ntdest = context->output_bytes;
@@ -2342,26 +2404,25 @@ static void t_blosc_do_job(void *ctxt)
       /* End of critical section */
 
       /* Copy the compressed buffer to destination */
-      if (context->clevel != 0) {
-        // We can avoid the copy when clevel == 0 (already copied)
-        fastcopy(dest + ntdest, tmp2, (unsigned int) cbytes);
-      }
+      memcpy(dest + ntdest, tmp2, (unsigned int) cbytes);
+    }
+    else if (static_schedule) {
+      nblock_++;
     }
     else {
-      nblock_++;
-      /* Update counter for this thread */
-      ntbytes += cbytes;
+      pthread_mutex_lock(&context->count_mutex);
+      context->thread_nblock++;
+      nblock_ = context->thread_nblock;
+      context->output_bytes += cbytes;
+      pthread_mutex_unlock(&context->count_mutex);
     }
 
   } /* closes while (nblock_) */
 
-  /* Sum up all the bytes decompressed */
-  if ((!compress || (flags & BLOSC_MEMCPYED)) && (context->thread_giveup_code > 0)) {
-    /* Update global counter for all threads (decompression only) */
-    pthread_mutex_lock(&context->count_mutex);
-    context->output_bytes += ntbytes;
-    pthread_mutex_unlock(&context->count_mutex);
+  if (static_schedule) {
+    context->output_bytes = context->sourcesize;
   }
+
 }
 
 /* Decompress & unshuffle several blocks in a single thread */
@@ -2396,7 +2457,6 @@ static void* t_blosc(void* ctxt) {
 int init_threadpool(blosc2_context *context) {
   int32_t tid;
   int rc2;
-  struct thread_context* thread_context;
 
   /* Initialize mutex and condition variable objects */
   pthread_mutex_init(&context->count_mutex, NULL);
@@ -2639,7 +2699,8 @@ void blosc_cbuffer_metainfo(const void* cbuffer, size_t* typesize, int* flags) {
   uint8_t version = _src[0];                        /* blosc format version */
   if (version > BLOSC_VERSION_FORMAT) {
     /* Version from future */
-    *flags = *typesize = 0;
+    *flags = 0;
+    *typesize = 0;
     return;
   }
 
@@ -2834,6 +2895,8 @@ blosc2_context* blosc2_create_dctx(blosc2_dparams dparams) {
   context->nthreads = dparams.nthreads;
   context->new_nthreads = context->nthreads;
   context->threads_started = 0;
+  context->block_maskout = NULL;
+  context->block_maskout_nitems = 0;
   context->schunk = dparams.schunk;
 
   return context;
@@ -2862,5 +2925,26 @@ void blosc2_free_ctx(blosc2_context* context) {
     my_free(context->pparams);
   }
 
+  if (context->block_maskout != NULL) {
+    free(context->block_maskout);
+  }
+
   my_free(context);
+}
+
+
+/* Set a maskout in decompression context */
+int blosc2_set_maskout(blosc2_context *ctx, bool *maskout, int nblocks) {
+
+  if (ctx->block_maskout != NULL) {
+    // Get rid of a possible mask here
+    free(ctx->block_maskout);
+  }
+
+  bool *maskout_ = malloc(nblocks);
+  memcpy(maskout_, maskout, nblocks);
+  ctx->block_maskout = maskout_;
+  ctx->block_maskout_nitems = nblocks;
+
+  return 0;
 }
