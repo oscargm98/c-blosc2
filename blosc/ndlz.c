@@ -509,6 +509,222 @@ int ndlz_compress(const int clevel, const void* input, int length,
 
 }
 
+
+int ndlz_compress_2(const int clevel, const void* input, int length,
+                    void* output, int maxout, uint8_t ndim, uint32_t shape1, uint32_t shape2) {
+
+    uint8_t* ibase = (uint8_t*)input;
+    uint8_t* ip = ibase;
+    uint8_t* ip_bound = ibase + length - IP_BOUNDARY;
+    uint8_t* ip_limit = ibase + length - 12;
+    uint8_t* op = (uint8_t*)output;
+    uint8_t* op_limit;
+    uint32_t htab[1U << (uint8_t)HASH_LOG];
+    uint32_t hval;
+    uint32_t seq;
+    uint8_t copy;
+
+    // Minimum cratios before issuing and _early giveup_
+    // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
+    double maxlength_[10] = {-1, .07, .1, .15, .25, .45, .5, .5, .5, .5};
+    int32_t maxlength = (int32_t)(length * maxlength_[clevel]);
+    if (maxlength > (int32_t)maxout) {
+        maxlength = (int32_t)maxout;
+    }
+    op_limit = op + maxlength;
+
+    uint8_t hashlog_[10] = {0, HASH_LOG - 2, HASH_LOG - 1, HASH_LOG, HASH_LOG,
+                            HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG};
+    uint8_t hashlog = hashlog_[clevel];
+    // Initialize the hash table to distances of 0
+    for (unsigned i = 0; i < (1U << hashlog); i++) {
+        htab[i] = 0;
+    }
+
+    /* input and output buffer cannot be less than 16 and 66 bytes or we can get into trouble */
+    if (length < 16 || maxout < 66) {
+        return 0;
+    }
+
+    /* we start with literal copy */
+    copy = 4;
+    *op++ = ndim;
+    memcpy(op, &shape1, 4);
+    op += 4;
+    memcpy(op, &shape2, 4);
+    op += 4;
+    *op = MAX_COPY - 1;
+    *op++ = *ip++;
+    *op++ = *ip++;
+    *op++ = *ip++;
+    *op++ = *ip++;
+
+    int nitems = (int) (shape1 * shape2);
+    int ncells = nitems / 16;
+    uint8_t buffercpy[16];
+    /* main loop */
+
+    // while (NDLZ_EXPECT_CONDITIONAL(ip < ip_limit)) {
+
+    for (int ci=0; ci<ncells; ci++){
+        int orig = ci * 16;
+
+        for (int i=0; i<4; i++) {
+            memcpy(op, &ip[orig + i*shape1], 4);
+            op += 4;
+        }
+
+        const uint8_t* ref;
+        uint32_t distance;
+        uint8_t* anchor = ip;    /* comparison starting-point */
+
+        /* find potential match */
+        seq = NDLZ_READU32(ip);
+        HASH_FUNCTION(hval, seq, hashlog)
+        ref = ibase + htab[hval];
+
+        /* calculate distance to the match */
+        distance = (int32_t)(anchor - ref);
+
+        /* update hash table */
+        htab[hval] = (uint32_t) (anchor - ibase);
+
+        if (distance == 0 || (distance >= MAX_FARDISTANCE)) {
+            LITERAL(ip, op, op_limit, anchor, copy)
+            continue;
+        }
+
+        /* is this a match? check the first 4 bytes */
+        if (NDLZ_UNEXPECT_CONDITIONAL(NDLZ_READU32(ref) == NDLZ_READU32(ip))) {
+            ref += 4;
+        }
+        else {
+            /* no luck, copy as a literal */
+            LITERAL(ip, op, op_limit, anchor, copy)
+            continue;
+        }
+
+        /* last matched byte */
+        ip = anchor + 4;
+
+        /* distance is biased */
+        distance--;
+
+        if (NDLZ_UNEXPECT_CONDITIONAL(!distance)) {
+            /* zero distance means a run */
+#if defined(__AVX2__)
+            ip = get_run_32(ip, ip_bound, ref);
+#elif defined(__SSE2__)
+            ip = get_run_16(ip, ip_bound, ref);
+#else
+            ip = get_run(ip, ip_bound, ref);
+#endif
+        }
+        else {
+#if defined(__AVX2__)
+            ip = get_match_32(ip, ip_bound + IP_BOUNDARY, ref);
+#elif defined(__SSE2__)
+            ip = get_match_16(ip, ip_bound + IP_BOUNDARY, ref);
+#else
+            ip = get_match(ip, ip_bound + IP_BOUNDARY, ref);
+#endif
+        }
+
+        /* if we have copied something, adjust the copy count */
+        if (copy)
+            /* copy is biased, '0' means 1 byte copy */
+            *(op - copy - 1) = (uint8_t)(copy - 1);
+        else
+            /* back, to overwrite the copy count */
+            op--;
+
+        /* reset literal counter */
+        copy = 0;
+
+        /* length is biased, '1' means a match of 3 bytes */
+        /* When we get back by 4 we obtain quite different compression properties.
+         * It looks like 4 is more useful in combination with bitshuffle and small typesizes
+         * (compress better and faster in e.g. `b2bench blosclz bitshuffle single 6 6291456 1 19`).
+         * Worth experimenting with this in the future.  For the time being, use 3 for high clevels. */
+        ip -= clevel > 8 ? 3 : 4;
+        long len = ip - anchor;
+
+        /* encode the match */
+        if (distance < MAX_DISTANCE) {
+            if (len < 7) {
+                *op++ = (uint8_t)((len << 5U) + (distance >> 8U));
+                *op++ = (uint8_t)((distance & 255U));
+            }
+            else {
+                *op++ = (uint8_t)((7U << 5U) + (distance >> 8U));
+                for (len -= 7; len >= 255; len -= 255)
+                    *op++ = 255;
+                *op++ = (uint8_t)len;
+                *op++ = (uint8_t)((distance & 255U));
+            }
+        }
+        else {
+            /* far away, but not yet in the another galaxy... */
+            if (len < 7) {
+                distance -= MAX_DISTANCE;
+                *op++ = (uint8_t)((len << 5U) + 31);
+                *op++ = 255;
+                *op++ = (uint8_t)(distance >> 8U);
+                *op++ = (uint8_t)(distance & 255U);
+            }
+            else {
+                distance -= MAX_DISTANCE;
+                *op++ = (7U << 5U) + 31;
+                for (len -= 7; len >= 255; len -= 255)
+                    *op++ = 255;
+                *op++ = (uint8_t)len;
+                *op++ = 255;
+                *op++ = (uint8_t)(distance >> 8U);
+                *op++ = (uint8_t)(distance & 255U);
+            }
+        }
+
+        /* update the hash at match boundary */
+        seq = NDLZ_READU32(ip);
+        HASH_FUNCTION(hval, seq, hashlog)
+        htab[hval] = (uint32_t) (ip++ - ibase);
+        seq >>= 8U;
+        HASH_FUNCTION(hval, seq, hashlog)
+        htab[hval] = (uint32_t) (ip++ - ibase);
+        /* assuming literal copy */
+        *op++ = MAX_COPY - 1;
+
+    }
+
+    /* left-over as literal copy */
+    ip_bound++;
+    while (NDLZ_UNEXPECT_CONDITIONAL(ip <= ip_bound)) {
+        if (NDLZ_UNEXPECT_CONDITIONAL(op + 2 > op_limit)) goto out;
+        *op++ = *ip++;
+        copy++;
+        if (NDLZ_UNEXPECT_CONDITIONAL(copy == MAX_COPY)) {
+            copy = 0;
+            *op++ = MAX_COPY - 1;
+        }
+    }
+
+    /* if we have copied something, adjust the copy length */
+    if (copy)
+        *(op - copy - 1) = (uint8_t)(copy - 1);
+    else
+        op--;
+
+    /* marker for ndlz */
+    *(uint8_t*)output |= (1U << 5U);
+
+    return (int)(op - (uint8_t*)output);
+
+    out:
+    return 0;
+
+}
+
+
 // See https://habr.com/en/company/yandex/blog/457612/
 #ifdef __AVX2__
 

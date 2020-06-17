@@ -6,6 +6,9 @@
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
 
+#include <stdio.h>
+#include "fastcopy.h"
+#include "blosc2-common.h"
 
 #ifndef NDLZ_H
 #define NDLZ_H
@@ -38,6 +41,21 @@ extern "C" {
 */
 
 int ndlz_compress(int opt_level, const void* input, int length, void* output, int maxout);
+
+/**
+  Decompress a block of compressed data and returns the size of the
+  decompressed block. If error occurs, e.g. the compressed data is
+  corrupted or the output buffer is not large enough, then 0 (zero)
+  will be returned instead.
+
+  The input buffer and the output buffer can not overlap.
+
+  Decompression is memory safe and guaranteed not to write the output buffer
+  more than what is specified in maxout.
+ */
+
+int ndlz_compress_2(int opt_level, const void* input, int length, void* output, int maxout,
+                    uint8_t ndim, uint32_t shape1, uint32_t shape2);
 
 /**
   Decompress a block of compressed data and returns the size of the
