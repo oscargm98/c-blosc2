@@ -20,9 +20,7 @@
 extern "C" {
 #endif
 
-#include <stdbool.h>
-
-#define BLOSCLZ_VERSION_STRING "2.0.0"
+#define BLOSCLZ_VERSION_STRING "2.2.0"
 
 
 /**
@@ -45,8 +43,8 @@ extern "C" {
   The input buffer and the output buffer can not overlap.
 */
 
-int blosclz_compress(const int opt_level, const void* input, int length,
-                     void* output, int maxout, bool shuffle);
+int blosclz_compress(int opt_level, const void* input, int length,
+                     void* output, int maxout);
 
 /**
   Decompress a block of compressed data and returns the size of the

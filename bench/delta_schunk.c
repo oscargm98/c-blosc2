@@ -22,10 +22,11 @@
 
 #define CHUNKSIZE (5 * 1000 * 1000)
 #define NCHUNKS 100
-#define NTHREADS 2
+// Setting NTHREADS > 1 increases the likelihood of a crash.  See #112.
+#define NTHREADS 1
 
 
-int main() {
+int main(void) {
   int32_t *data, *data_dest;
   blosc2_cparams cparams = BLOSC2_CPARAMS_DEFAULTS;
   blosc2_dparams dparams = BLOSC2_DPARAMS_DEFAULTS;

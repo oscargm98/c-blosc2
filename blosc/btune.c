@@ -14,7 +14,7 @@
 
 /* Whether a codec is meant for High Compression Ratios
    Includes LZ4 + BITSHUFFLE here, but not BloscLZ + BITSHUFFLE because,
-   for some reason, the latter does not work too well */
+   BloscLZ always works with splits, which have a different blocksize computation. */
 static bool is_HCR(blosc2_context * context) {
   switch (context->compcode) {
     case BLOSC_BLOSCLZ :
@@ -29,6 +29,8 @@ static bool is_HCR(blosc2_context * context) {
       return true;
     case BLOSC_ZSTD :
       return true;
+    case BLOSC_NDLZ :
+      return false;
     default :
       fprintf(stderr, "Error in is_COMP_HCR: codec %d not handled\n",
               context->compcode);
@@ -43,7 +45,6 @@ void btune_next_blocksize(blosc2_context *context) {
   int32_t nbytes = context->sourcesize;
   int32_t user_blocksize = context->blocksize;
   int32_t blocksize = nbytes;
-  int nthreads = context->nthreads;
 
   // Protection against very small buffers
   if (nbytes < typesize) {
@@ -53,10 +54,6 @@ void btune_next_blocksize(blosc2_context *context) {
 
   if (user_blocksize) {
     blocksize = user_blocksize;
-    // Check that forced blocksize is not too small
-    if (blocksize < BLOSC_MIN_BUFFERSIZE) {
-      blocksize = BLOSC_MIN_BUFFERSIZE;
-    }
     goto last;
   }
 
@@ -108,34 +105,40 @@ void btune_next_blocksize(blosc2_context *context) {
 
   /* Now the blocksize for splittable codecs */
   if (clevel > 0 && split_block(context->compcode, typesize, blocksize, true)) {
-    blocksize = L1;
+    // For performance reasons, do not exceed 256 KB (in must fit in L2 cache)
     switch (clevel) {
       case 1:
-        blocksize /= 2;
+        blocksize = 8 * 1024;
         break;
       case 2:
       case 3:
-        blocksize *= 1;
+        blocksize = 16 * 1024;
         break;
       case 4:
       case 5:
-        blocksize *= 2;
-        break;
       case 6:
       case 7:
-        blocksize *= 4;
-        break;
       case 8:
+        blocksize = 128 * 1024;
+        break;
       case 9:
-        // Do not exceed 256 KB, never ;-)
-        blocksize *= 8;
-        break;
       default:
+        blocksize = 256 * 1024;
         break;
-     }
+    }
+    // Multiply by typesize so as to get proper split sizes
+    blocksize *= typesize;
+    // But do not exceed 1 MB per thread (having this capacity in L3 is normal in modern CPUs)
+    if (blocksize > 1024 * 1024) {
+      blocksize = 1024 * 1024;
+    }
+    if (blocksize < 32 * 1024) {
+      /* Do not use a too small blocksize (< 32 KB) when typesize is small */
+      blocksize = 32 * 1024;
+    }
   }
 
-last:
+  last:
   /* Check that blocksize is not too large */
   if (blocksize > nbytes) {
     blocksize = nbytes;

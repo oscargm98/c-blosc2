@@ -1,9 +1,30 @@
- Release notes for C-Blosc2 2.0.0-beta.5 (fifth beta)
+ Release notes for C-Blosc2 2.0.0.beta.6 (sixth beta)
 ======================================================
 
 
-Changes from 2.0.0-beta.4 to 2.0.0-beta.5
-=========================================
+Changes from 2.0.0-beta.5 to 2.0.0.beta6
+========================================
+
+* Internal Zstd sources updated to 1.4.5.
+
+
+Changes from 2.0.0-beta.4 to 2.0.0.beta5
+========================================
+
+* The prefilter functionality has been introduced and declared stable.
+  With that, you can callback arbitrary functions previous to any filter.
+  This can be useful for performing (parallel) computations on chunks.
+  For an example of use, see `tests/test_prefilter.c`.
+
+* New blosc2_set_maskout() function to avoid decompressing blocks.  This
+  can be handy when it is not needed to decompress all the blocks in a
+  chunk. This should be always called before blosc2_decompress_ctx() and
+  its effect is reset to the default (decompress all blocks) after that.
+
+* New ALTIVEC optimizations for Power architecture.  These include support
+  for both shuffle and bitshuffle filters.  For details, see
+  https://github.com/Blosc/c-blosc2/pull/98.  Thanks to Jerome Kieffer
+  and ESRF for making this happen.
 
 * New blosc2_frame_from_sframe() function for getting a `blosc2_frame`
   out of an in-memory serialized frame.

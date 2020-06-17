@@ -33,9 +33,9 @@ extern "C" {
 #define BLOSC_VERSION_MINOR    0    /* for minor interface/format changes  */
 #define BLOSC_VERSION_RELEASE  0    /* for tweaks, bug-fixes, or development */
 
-#define BLOSC_VERSION_STRING   "2.0.0-beta.5.dev"  /* string version.  Sync with above! */
+#define BLOSC_VERSION_STRING   "2.0.0.beta.6.dev"  /* string version.  Sync with above! */
 #define BLOSC_VERSION_REVISION "$Rev$"   /* revision version */
-#define BLOSC_VERSION_DATE     "$Date:: 2019-09-13 #$"    /* date version */
+#define BLOSC_VERSION_DATE     "$Date:: 2020-04-21 #$"    /* date version */
 
 
 /* The VERSION_FORMAT symbols below should be just 1-byte long */
@@ -145,7 +145,8 @@ enum {
   BLOSC_ZLIB = 4,
   BLOSC_ZSTD = 5,
   BLOSC_LIZARD = 6,
-  BLOSC_MAX_CODECS = 7,  //!< maximum number of reserved codecs
+  BLOSC_NDLZ = 7,
+  BLOSC_MAX_CODECS = 8,  //!< maximum number of reserved codecs
 };
 
 
@@ -158,6 +159,7 @@ enum {
 #define BLOSC_SNAPPY_COMPNAME    "snappy"
 #define BLOSC_ZLIB_COMPNAME      "zlib"
 #define BLOSC_ZSTD_COMPNAME      "zstd"
+#define BLOSC_NDLZ_COMPNAME      "ndlz"
 
 /**
  * @brief Codes for compression libraries shipped with Blosc (code must be < 8)
@@ -169,6 +171,7 @@ enum {
   BLOSC_ZLIB_LIB = 3,
   BLOSC_ZSTD_LIB = 4,
   BLOSC_LIZARD_LIB = 5,
+  BLOSC_NDLZ_LIB = 6,
   BLOSC_SCHUNK_LIB = 7,   //!< compressor library in super-chunk header
 };
 
@@ -185,6 +188,7 @@ enum {
   #define BLOSC_ZLIB_LIBNAME    "Zlib"
 #endif	/* HAVE_MINIZ */
 #define BLOSC_ZSTD_LIBNAME      "Zstd"
+#define BLOSC_NDLZ_LIBNAME      "ndLZ"
 
 /**
  * @brief The codes for compressor formats shipped with Blosc
@@ -198,6 +202,7 @@ enum {
   BLOSC_SNAPPY_FORMAT = BLOSC_SNAPPY_LIB,
   BLOSC_ZLIB_FORMAT = BLOSC_ZLIB_LIB,
   BLOSC_ZSTD_FORMAT = BLOSC_ZSTD_LIB,
+  BLOSC_NDLZ_FORMAT = BLOSC_NDLZ_LIB,
 };
 
 /**
@@ -212,6 +217,7 @@ enum {
   BLOSC_SNAPPY_VERSION_FORMAT = 1,
   BLOSC_ZLIB_VERSION_FORMAT = 1,
   BLOSC_ZSTD_VERSION_FORMAT = 1,
+  BLOSC_NDLZ_VERSION_FORMAT = 1,
 };
 
 /**
@@ -293,7 +299,7 @@ BLOSC_EXPORT void blosc_destroy(void);
  * **BLOSC_TYPESIZE=(INTEGER)**: This will overwrite the *typesize*
  * parameter before the compression process starts.
  *
- * **BLOSC_COMPRESSOR=[BLOSCLZ | LZ4 | LZ4HC | LIZARD | SNAPPY | ZLIB]**:
+ * **BLOSC_COMPRESSOR=[BLOSCLZ | LZ4 | LZ4HC | LIZARD | ZLIB | ZSTD | NDLZ]**:
  * This will call *blosc_set_compressor(BLOSC_COMPRESSOR)* before the
  * compression process starts.
  *
@@ -426,7 +432,7 @@ BLOSC_EXPORT const char* blosc_get_compressor(void);
 
 /**
  * @brief Select the compressor to be used. The supported ones are "blosclz",
- * "lz4", "lz4hc", "snappy", "zlib" and "ztsd". If this function is not
+ * "lz4", "lz4hc", "snappy", "zlib", "ztsd" and "ndlz". If this function is not
  * called, then "blosclz" will be used.
  *
  * @param compname The name identifier of the compressor to be set.
@@ -601,24 +607,20 @@ BLOSC_EXPORT const char* blosc_cbuffer_complib(const void* cbuffer);
 
 typedef struct blosc2_context_s blosc2_context;   /* opaque type */
 
-#define BLOSC2_PREFILTER_INPUTS_MAX (128)
-
 /**
  * @brief The parameters for a prefilter function.
  *
- * There can be many inputs and a single output.
- * The number of elements of each input and the output should be the same.
- * Strictly, the user only needs to fill the `ninputs` , `inputs` and `input_typesizes`.
- * The other fields will be filled by the library itself.
  */
 typedef struct {
-  int ninputs;  // number of data inputs
-  uint8_t* inputs[BLOSC2_PREFILTER_INPUTS_MAX];  // the data inputs
-  int32_t input_typesizes[BLOSC2_PREFILTER_INPUTS_MAX];  // the typesizes for data inputs
   void *user_data;  // user-provided info (optional)
-  uint8_t *out;  // automatically filled
-  int32_t out_size;  // automatically filled
-  int32_t out_typesize;  // automatically filled
+  uint8_t *out;  // the output buffer
+  int32_t out_size;  // the output size (in bytes)
+  int32_t out_typesize;  // the output typesize
+  int32_t out_offset; // offset to reach the start of the output buffer
+  int32_t tid;  // thread id
+  uint8_t *ttmp;  // a temporary that is able to hold several blocks for the output and is private for each thread
+  int32_t ttmp_nbytes;  // the size of the temporary in bytes
+  blosc2_context *ctx;  // the decompression context
 } blosc2_prefilter_params;
 
 /**
@@ -676,10 +678,6 @@ static const blosc2_cparams BLOSC2_CPARAMS_DEFAULTS = {
 typedef struct {
   int nthreads;
   //!< The number of threads to use internally (1).
-  bool* block_maskout;
-  //!< The blocks that are not meant to be decompressed. If NULL (default), all blocks in a chunk should be read.
-  int block_maskout_nitems;
-  //!< The number of items in block_maskout array (must match the number of blocks in chunk if block_maskout != NULL).
   void* schunk;
   //!< The associated schunk, if any (NULL).
 } blosc2_dparams;
@@ -687,7 +685,7 @@ typedef struct {
 /**
  * @brief Default struct for decompression params meant for user initialization.
  */
-static const blosc2_dparams BLOSC2_DPARAMS_DEFAULTS = {1, NULL, 0, NULL };
+static const blosc2_dparams BLOSC2_DPARAMS_DEFAULTS = {1, NULL};
 
 /**
  * @brief Create a context for @a *_ctx() compression functions.
@@ -720,16 +718,23 @@ BLOSC_EXPORT void blosc2_free_ctx(blosc2_context* context);
 /**
  * @brief Set a maskout so as to avoid decompressing specified blocks.
  *
- * @param dctx The decompression context to update.
+ * @param ctx The decompression context to update.
  *
- * @param block_maskout The boolean mask for avoiding decompression in block.
+ * @param maskout The boolean mask for the blocks where decompression
+ * is to be avoided.
+ *
+ * @remark The maskout is valid for contexts *only* meant for decompressing
+ * a chunk via #blosc2_decompress_ctx.  Once a call to #blosc2_decompress_ctx
+ * is done, this mask is reset so that next call to #blosc2_decompress_ctx
+ * will decompress the whole chunk.
  *
  * @param nblocks The number of blocks in maskout above.
  *
- * This function should always succeed and is valid for contexts only meant
- * for decompression.
+ * @return If success, a 0 values is returned.  An error is signaled with a
+ * negative int.
+ *
  */
-BLOSC_EXPORT void blosc2_set_maskout(blosc2_context *dctx, bool *block_maskout, int nblocks);
+BLOSC_EXPORT int blosc2_set_maskout(blosc2_context *ctx, bool *maskout, int nblocks);
 
 /**
  * @brief Context interface to Blosc compression. This does not require a call
@@ -773,14 +778,19 @@ BLOSC_EXPORT int blosc2_compress_ctx(
  * buffer more than what is specified in @p destsize.
  *
  * @remark In case you want to keep under control the number of bytes read from
- * source, you can call #blosc_cbuffer_sizes first to check whether the
- * @p nbytes (i.e. the number of bytes to be read from @p src buffer by this
- * function) in the compressed buffer is ok with you.
+ * source, you can call #blosc_cbuffer_sizes first to check the @p nbytes
+ * (i.e. the number of bytes to be read from @p src buffer by this function)
+ * in the compressed buffer.
  *
- * @return The number of bytes decompressed. If an error occurs,
- * e.g. the compressed data is corrupted, @p destsize is not large enough
- * or context is not meant for decompression, then 0 (zero) or a
- * negative value will be returned instead.
+ * @remark If #blosc2_set_maskout is called prior to this function, its
+ * @p block_maskout parameter will be honored for just *one single* shot;
+ * i.e. the maskout in context will be automatically reset to NULL, so
+ * mask won't be used next time (unless #blosc2_set_maskout is called again).
+ *
+ * @return The number of bytes decompressed (i.e. the maskout blocks are not
+ * counted). If an error occurs, e.g. the compressed data is corrupted,
+ * @p destsize is not large enough or context is not meant for decompression,
+ * then 0 (zero) or a negative value will be returned instead.
  */
 BLOSC_EXPORT int blosc2_decompress_ctx(blosc2_context* context, const void* src,
                                        void* dest, size_t destsize);
