@@ -21,6 +21,7 @@
 #include "ndlz.h"
 #include "fastcopy.h"
 #include "blosc2-common.h"
+#include <xxhash.h>
 
 
 /*
@@ -43,7 +44,7 @@
 
 #define MAX_COPY 32U
 #define MAX_DISTANCE 8191
-#define MAX_FARDISTANCE (65535 + MAX_DISTANCE - 1)
+#define MAX_FARDISTANCE 65535
 
 #ifdef BLOSC_STRICT_ALIGN
   #define NDLZ_READU16(p) ((p)[0] | (p)[1]<<8)
@@ -511,18 +512,20 @@ int ndlz_compress(const int clevel, const void* input, int length,
 
 
 int ndlz_compress_2(const int clevel, const void* input, int length,
-                    void* output, int maxout, uint8_t ndim, uint32_t shape1, uint32_t shape2) {
+                    void* output, int maxout, uint8_t ndim, uint32_t shape[2]) {
 
-    uint8_t* ibase = (uint8_t*)input;
-    uint8_t* ip = ibase;
-    uint8_t* ip_bound = ibase + length - IP_BOUNDARY;
-    uint8_t* ip_limit = ibase + length - 12;
-    uint8_t* op = (uint8_t*)output;
-    uint8_t* op_limit;
-    uint32_t htab[1U << (uint8_t)HASH_LOG];
+    if (length != (shape[0] * shape[1])) {
+        return -1;
+    }
+    uint8_t *obase = (uint8_t *) output;
+    uint8_t *ip = (uint8_t *) input;
+    uint8_t *ip_bound = obase + length - IP_BOUNDARY;   //pending
+    uint8_t *ip_limit = obase + length - 12;            //pending
+    uint8_t *op = (uint8_t *) output;
+    uint8_t *op_limit;
+    uint32_t htab[1U << 12U];
     uint32_t hval;
-    uint32_t seq;
-    uint8_t copy;
+
 
     // Minimum cratios before issuing and _early giveup_
     // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -533,11 +536,14 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     }
     op_limit = op + maxlength;
 
+    /*
     uint8_t hashlog_[10] = {0, HASH_LOG - 2, HASH_LOG - 1, HASH_LOG, HASH_LOG,
                             HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG};
     uint8_t hashlog = hashlog_[clevel];
+    */
+
     // Initialize the hash table to distances of 0
-    for (unsigned i = 0; i < (1U << hashlog); i++) {
+    for (unsigned i = 0; i < (1U << 12U); i++) {
         htab[i] = 0;
     }
 
@@ -547,181 +553,68 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     }
 
     /* we start with literal copy */
-    copy = 4;
     *op++ = ndim;
-    memcpy(op, &shape1, 4);
+    memcpy(op, &shape[0], 4);
     op += 4;
-    memcpy(op, &shape2, 4);
+    memcpy(op, &shape[1], 4);
     op += 4;
-    *op = MAX_COPY - 1;
-    *op++ = *ip++;
-    *op++ = *ip++;
-    *op++ = *ip++;
-    *op++ = *ip++;
 
-    int nitems = (int) (shape1 * shape2);
+    /*
+    int nitems = (int) (shape[0] * shape[1]);
     int ncells = nitems / 16;
-    uint8_t buffercpy[16];
+    */
+    uint32_t i_stop[2];
+    for (int i = 0; i < 2; ++i) {
+        i_stop[i] = shape[i] / 4;
+    }
+
     /* main loop */
-
-    // while (NDLZ_EXPECT_CONDITIONAL(ip < ip_limit)) {
-
-    for (int ci=0; ci<ncells; ci++){
-        int orig = ci * 16;
-
-        for (int i=0; i<4; i++) {
-            memcpy(op, &ip[orig + i*shape1], 4);
-            op += 4;
-        }
-
-        const uint8_t* ref;
-        uint32_t distance;
-        uint8_t* anchor = ip;    /* comparison starting-point */
-
-        /* find potential match */
-        seq = NDLZ_READU32(ip);
-        HASH_FUNCTION(hval, seq, hashlog)
-        ref = ibase + htab[hval];
-
-        /* calculate distance to the match */
-        distance = (int32_t)(anchor - ref);
-
-        /* update hash table */
-        htab[hval] = (uint32_t) (anchor - ibase);
-
-        if (distance == 0 || (distance >= MAX_FARDISTANCE)) {
-            LITERAL(ip, op, op_limit, anchor, copy)
-            continue;
-        }
-
-        /* is this a match? check the first 4 bytes */
-        if (NDLZ_UNEXPECT_CONDITIONAL(NDLZ_READU32(ref) == NDLZ_READU32(ip))) {
-            ref += 4;
-        }
-        else {
-            /* no luck, copy as a literal */
-            LITERAL(ip, op, op_limit, anchor, copy)
-            continue;
-        }
-
-        /* last matched byte */
-        ip = anchor + 4;
-
-        /* distance is biased */
-        distance--;
-
-        if (NDLZ_UNEXPECT_CONDITIONAL(!distance)) {
-            /* zero distance means a run */
-#if defined(__AVX2__)
-            ip = get_run_32(ip, ip_bound, ref);
-#elif defined(__SSE2__)
-            ip = get_run_16(ip, ip_bound, ref);
-#else
-            ip = get_run(ip, ip_bound, ref);
-#endif
-        }
-        else {
-#if defined(__AVX2__)
-            ip = get_match_32(ip, ip_bound + IP_BOUNDARY, ref);
-#elif defined(__SSE2__)
-            ip = get_match_16(ip, ip_bound + IP_BOUNDARY, ref);
-#else
-            ip = get_match(ip, ip_bound + IP_BOUNDARY, ref);
-#endif
-        }
-
-        /* if we have copied something, adjust the copy count */
-        if (copy)
-            /* copy is biased, '0' means 1 byte copy */
-            *(op - copy - 1) = (uint8_t)(copy - 1);
-        else
-            /* back, to overwrite the copy count */
-            op--;
-
-        /* reset literal counter */
-        copy = 0;
-
-        /* length is biased, '1' means a match of 3 bytes */
-        /* When we get back by 4 we obtain quite different compression properties.
-         * It looks like 4 is more useful in combination with bitshuffle and small typesizes
-         * (compress better and faster in e.g. `b2bench blosclz bitshuffle single 6 6291456 1 19`).
-         * Worth experimenting with this in the future.  For the time being, use 3 for high clevels. */
-        ip -= clevel > 8 ? 3 : 4;
-        long len = ip - anchor;
-
-        /* encode the match */
-        if (distance < MAX_DISTANCE) {
-            if (len < 7) {
-                *op++ = (uint8_t)((len << 5U) + (distance >> 8U));
-                *op++ = (uint8_t)((distance & 255U));
+    uint8_t *buffercpy;
+    uint32_t ii[2];
+    for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
+        for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
+            int ncell = ii[1] + ii[0] * (shape[1] / 4);
+            uint32_t orig = ii[0] * 4 * shape[1] + ii[1];
+            for (int i = 0; i < 4; i++) {
+                *ip = orig + i * shape[1];
+                memcpy(buffercpy, ip, 4);
+                buffercpy += 4;
             }
-            else {
-                *op++ = (uint8_t)((7U << 5U) + (distance >> 8U));
-                for (len -= 7; len >= 255; len -= 255)
-                    *op++ = 255;
-                *op++ = (uint8_t)len;
-                *op++ = (uint8_t)((distance & 255U));
-            }
-        }
-        else {
-            /* far away, but not yet in the another galaxy... */
-            if (len < 7) {
-                distance -= MAX_DISTANCE;
-                *op++ = (uint8_t)((len << 5U) + 31);
-                *op++ = 255;
-                *op++ = (uint8_t)(distance >> 8U);
-                *op++ = (uint8_t)(distance & 255U);
-            }
-            else {
-                distance -= MAX_DISTANCE;
-                *op++ = (7U << 5U) + 31;
-                for (len -= 7; len >= 255; len -= 255)
-                    *op++ = 255;
-                *op++ = (uint8_t)len;
-                *op++ = 255;
-                *op++ = (uint8_t)(distance >> 8U);
-                *op++ = (uint8_t)(distance & 255U);
-            }
-        }
 
-        /* update the hash at match boundary */
-        seq = NDLZ_READU32(ip);
-        HASH_FUNCTION(hval, seq, hashlog)
-        htab[hval] = (uint32_t) (ip++ - ibase);
-        seq >>= 8U;
-        HASH_FUNCTION(hval, seq, hashlog)
-        htab[hval] = (uint32_t) (ip++ - ibase);
-        /* assuming literal copy */
-        *op++ = MAX_COPY - 1;
+            if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
+                return 0;
+            }
 
-    }
+            const uint8_t *ref;
+            uint32_t distance;
+            uint8_t *anchor = op;    /* comparison starting-point */
 
-    /* left-over as literal copy */
-    ip_bound++;
-    while (NDLZ_UNEXPECT_CONDITIONAL(ip <= ip_bound)) {
-        if (NDLZ_UNEXPECT_CONDITIONAL(op + 2 > op_limit)) goto out;
-        *op++ = *ip++;
-        copy++;
-        if (NDLZ_UNEXPECT_CONDITIONAL(copy == MAX_COPY)) {
-            copy = 0;
-            *op++ = MAX_COPY - 1;
+            /* find potential match */
+            hval = XXH32(buffercpy, 16, 1);        // calculate cell hash
+            hval >>= 32U - 12U;
+            ref = obase + htab[hval];
+
+            /* calculate distance to the match */
+            distance = (int32_t) (anchor - ref);
+
+
+            uint8_t token;
+            // no match
+            if (distance == 0 || (distance >= MAX_FARDISTANCE)) {
+                htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
+                token = 0;
+                *op++ = token;
+                memcpy(op, buffercpy, 16);
+                op += 16;
+            } else {  //match
+                token = (uint8_t )(1U << 7U);
+                *op++ = token;
+                uint16_t offset = anchor + obase - htab[hval];
+                memcpy(op, &offset, 2);
+                op += 2;
+            }
         }
     }
-
-    /* if we have copied something, adjust the copy length */
-    if (copy)
-        *(op - copy - 1) = (uint8_t)(copy - 1);
-    else
-        op--;
-
-    /* marker for ndlz */
-    *(uint8_t*)output |= (1U << 5U);
-
-    return (int)(op - (uint8_t*)output);
-
-    out:
-    return 0;
-
 }
 
 

@@ -1,5 +1,6 @@
 name: CI CMake
-on: [push, pull_request]
+# on: [push, pull_request]
+on: []
 jobs:
   ci-cmake:
     name: ${{ matrix.name }}
