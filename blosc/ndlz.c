@@ -519,12 +519,11 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     }
     uint8_t *obase = (uint8_t *) output;
     uint8_t *ip = (uint8_t *) input;
-    uint8_t *ip_bound = obase + length - IP_BOUNDARY;   //pending
-    uint8_t *ip_limit = obase + length - 12;            //pending
     uint8_t *op = (uint8_t *) output;
     uint8_t *op_limit;
     uint32_t htab[1U << 12U];
     uint32_t hval;
+    uint8_t *buffercpy;
 
 
     // Minimum cratios before issuing and _early giveup_
@@ -535,12 +534,6 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
         maxlength = (int32_t)maxout;
     }
     op_limit = op + maxlength;
-
-    /*
-    uint8_t hashlog_[10] = {0, HASH_LOG - 2, HASH_LOG - 1, HASH_LOG, HASH_LOG,
-                            HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG, HASH_LOG};
-    uint8_t hashlog = hashlog_[clevel];
-    */
 
     // Initialize the hash table to distances of 0
     for (unsigned i = 0; i < (1U << 12U); i++) {
@@ -559,32 +552,25 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     memcpy(op, &shape[1], 4);
     op += 4;
 
-    /*
-    int nitems = (int) (shape[0] * shape[1]);
-    int ncells = nitems / 16;
-    */
     uint32_t i_stop[2];
     for (int i = 0; i < 2; ++i) {
         i_stop[i] = shape[i] / 4;
     }
 
     /* main loop */
-    uint8_t *buffercpy;
     uint32_t ii[2];
     for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
         for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
-            int ncell = ii[1] + ii[0] * (shape[1] / 4);
+            // int ncell = ii[1] + ii[0] * (shape[1] / 4);
             uint32_t orig = ii[0] * 4 * shape[1] + ii[1];
             for (int i = 0; i < 4; i++) {
                 *ip = orig + i * shape[1];
                 memcpy(buffercpy, ip, 4);
                 buffercpy += 4;
             }
-
             if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
                 return 0;
             }
-
             const uint8_t *ref;
             uint32_t distance;
             uint8_t *anchor = op;    /* comparison starting-point */
@@ -597,19 +583,17 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
             /* calculate distance to the match */
             distance = (int32_t) (anchor - ref);
 
-
             uint8_t token;
-            // no match
-            if (distance == 0 || (distance >= MAX_FARDISTANCE)) {
+            if (distance == 0 || (distance >= MAX_FARDISTANCE)) {   // no match
                 htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
                 token = 0;
                 *op++ = token;
                 memcpy(op, buffercpy, 16);
                 op += 16;
-            } else {  //match
+            } else {   //match
                 token = (uint8_t )(1U << 7U);
                 *op++ = token;
-                uint16_t offset = anchor + obase - htab[hval];
+                uint16_t offset = (uint16_t) ((uint8_t) (anchor) + obase - htab[hval]);
                 memcpy(op, &offset, 2);
                 op += 2;
             }
