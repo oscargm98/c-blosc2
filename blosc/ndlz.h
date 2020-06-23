@@ -45,7 +45,7 @@ int ndlz_compress(int opt_level, const void* input, int length, void* output, in
 /**
   Compress a block of data in the input buffer and returns the size of
   compressed block. The size of input buffer is specified by
-  length. The minimum input buffer size is 16.
+  length, and must coincide with the product of shapes. The minimum input buffer size is 16.
 
   The output buffer must be at least 5% larger than the input buffer
   and can not be smaller than 66 bytes.
@@ -80,6 +80,20 @@ int ndlz_compress_2(int opt_level, const void* input, int length, void* output, 
  */
 
 int ndlz_decompress(const void* input, int length, void* output, int maxout);
+
+/**
+  Decompress a block of compressed data and returns the size of the
+  decompressed block. If error occurs, e.g. the compressed data is
+  corrupted or the output buffer is not large enough, then 0 (zero)
+  will be returned instead.
+
+  The input buffer and the output buffer can not overlap.
+
+  Decompression is memory safe and guaranteed not to write the output buffer
+  more than what is specified in maxout.
+ */
+
+int ndlz_decompress_2(const void* input, int length, void* output, int maxout);
 
 #if defined (__cplusplus)
 }

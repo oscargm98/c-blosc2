@@ -43,8 +43,7 @@
 #endif
 
 #define MAX_COPY 32U
-#define MAX_DISTANCE 8191
-#define MAX_FARDISTANCE 65535
+#define MAX_DISTANCE 65535
 
 #ifdef BLOSC_STRICT_ALIGN
   #define NDLZ_READU16(p) ((p)[0] | (p)[1]<<8)
@@ -375,7 +374,7 @@ int ndlz_compress(const int clevel, const void* input, int length,
     /* update hash table */
     htab[hval] = (uint32_t) (anchor - ibase);
 
-    if (distance == 0 || (distance >= MAX_FARDISTANCE)) {
+    if (distance == 0 || (distance >= MAX_DISTANCE)) {
       LITERAL(ip, op, op_limit, anchor, copy)
       continue;
     }
@@ -517,13 +516,12 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     if (length != (shape[0] * shape[1])) {
         return -1;
     }
-    uint8_t *obase = (uint8_t *) output;
-    uint8_t *ip = (uint8_t *) input;
-    uint8_t *op = (uint8_t *) output;
-    uint8_t *op_limit;
+    uint8_t* ip = (uint8_t *) input;
+    uint8_t* op = (uint8_t *) output;
+    uint8_t* op_limit;
     uint32_t htab[1U << 12U];
     uint32_t hval;
-    uint8_t *buffercpy;
+    uint8_t* buffercpy;
 
 
     // Minimum cratios before issuing and _early giveup_
@@ -552,6 +550,8 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     memcpy(op, &shape[1], 4);
     op += 4;
 
+    uint8_t* obase = op;
+
     uint32_t i_stop[2];
     for (int i = 0; i < 2; ++i) {
         i_stop[i] = shape[i] / 4;
@@ -564,8 +564,8 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
             // int ncell = ii[1] + ii[0] * (shape[1] / 4);
             uint32_t orig = ii[0] * 4 * shape[1] + ii[1];
             for (int i = 0; i < 4; i++) {
-                *ip = orig + i * shape[1];
-                memcpy(buffercpy, ip, 4);
+                int ind = orig + i * shape[1];
+                memcpy(buffercpy, &ip[ind], 4);
                 buffercpy += 4;
             }
             if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
@@ -573,7 +573,7 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
             }
             const uint8_t *ref;
             uint32_t distance;
-            uint8_t *anchor = op;    /* comparison starting-point */
+            uint8_t* anchor = op;    /* comparison starting-point */
 
             /* find potential match */
             hval = XXH32(buffercpy, 16, 1);        // calculate cell hash
@@ -584,7 +584,7 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
             distance = (int32_t) (anchor - ref);
 
             uint8_t token;
-            if (distance == 0 || (distance >= MAX_FARDISTANCE)) {   // no match
+            if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no match
                 htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
                 token = 0;
                 *op++ = token;
@@ -593,12 +593,13 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
             } else {   //match
                 token = (uint8_t )(1U << 7U);
                 *op++ = token;
-                uint16_t offset = (uint16_t) ((uint8_t) (anchor) + obase - htab[hval]);
+                uint16_t offset = (uint16_t) (anchor - obase - htab[hval]);
                 memcpy(op, &offset, 2);
                 op += 2;
             }
         }
     }
+    return (int)(op - obase);
 }
 
 
@@ -783,4 +784,64 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   }
 
   return (int)(op - (uint8_t*)output);
+}
+
+int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
+    const uint8_t* ip = (const uint8_t*)input;
+    const uint8_t* ip_limit = ip + length;
+    uint8_t* op = (uint8_t*)output;
+    uint8_t* op_limit = op + maxout;
+    uint8_t ndim;
+    uint32_t shape[2];
+    uint8_t* buffercpy;
+    uint8_t token;
+    if (NDLZ_UNEXPECT_CONDITIONAL(length == 0)) {
+        return 0;
+    }
+
+    /* we start with literal copy */
+    ndim = *ip;
+    ip ++;
+    memcpy(&shape[0], ip, 4);
+    ip += 4;
+    memcpy(&shape[1], ip, 4);
+    ip += 4;
+
+    uint32_t i_stop[2];
+    for (int i = 0; i < 2; ++i) {
+        i_stop[i] = shape[i] / 4;
+    }
+
+    /* main loop */
+    uint32_t ii[2];
+    int ind;
+    for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
+        for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
+            token = *ip++;
+            if (token == 0){    // no match
+                memcpy(buffercpy, ip, 16);
+                ip += 16;
+            } else if (token == (uint8_t)(1U << 7U)) {  // match
+                uint16_t offset;
+                memcpy(&offset, ip, 2);
+                uint8_t* anchor = ip - offset;
+                memcpy(buffercpy, anchor, 16);
+                ip += 2;
+            } else {
+                return -1;
+            }
+            // fill op with buffercpy
+            uint32_t orig = ii[0] * 4 * shape[1] + ii[1];
+            for (int i = 0; i < 4; i++) {
+                ind = orig + i * shape[1];
+                memcpy(&op[ind], buffercpy, 4);
+                buffercpy += 4;
+            }
+        }
+    }
+    ind += shape[1];
+    if (ind != (shape[0] * shape[1])) {
+        return -1;
+    }
+    return ind;
 }
