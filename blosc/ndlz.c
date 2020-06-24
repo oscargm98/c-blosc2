@@ -21,7 +21,8 @@
 #include "ndlz.h"
 #include "fastcopy.h"
 #include "blosc2-common.h"
-#include <xxhash.h>
+//#include <xxhash.h>
+#include "xxhash.c"
 
 
 /*
@@ -787,15 +788,14 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
 }
 
 int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
-    const uint8_t* ip = (const uint8_t*)input;
-    const uint8_t* ip_limit = ip + length;
+    uint8_t* ip = (uint8_t*)input;
+    uint8_t* ip_limit = ip + length;
     uint8_t* op = (uint8_t*)output;
-    uint8_t* op_limit = op + maxout;
     uint8_t ndim;
     uint32_t shape[2];
     uint8_t* buffercpy;
     uint8_t token;
-    if (NDLZ_UNEXPECT_CONDITIONAL(length == 0)) {
+    if (NDLZ_UNEXPECT_CONDITIONAL(length <= 0)) {
         return 0;
     }
 
@@ -819,16 +819,15 @@ int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
         for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
             token = *ip++;
             if (token == 0){    // no match
-                memcpy(buffercpy, ip, 16);
+                buffercpy = ip;
                 ip += 16;
             } else if (token == (uint8_t)(1U << 7U)) {  // match
-                uint16_t offset;
-                memcpy(&offset, ip, 2);
-                uint8_t* anchor = ip - offset;
-                memcpy(buffercpy, anchor, 16);
+                uint16_t offset = *((uint16_t*) ip);
+                buffercpy = ip - offset;
                 ip += 2;
             } else {
-                return -1;
+                printf("Invalid token \n");
+                return 0;
             }
             // fill op with buffercpy
             uint32_t orig = ii[0] * 4 * shape[1] + ii[1];
@@ -839,9 +838,15 @@ int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
             }
         }
     }
-    ind += shape[1];
+    ind += shape[1] + 4;
     if (ind != (shape[0] * shape[1])) {
-        return -1;
+        printf("Output size is not compatible with embeded shape \n");
+        return 0;
     }
+    if (ind > maxout) {
+      printf("Output size is bigger than max \n");
+      return 0;
+    }
+
     return ind;
 }
