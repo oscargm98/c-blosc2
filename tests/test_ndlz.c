@@ -11,7 +11,7 @@
 
     To run:
 
-    $ ./many_compressors
+    $ ./test_ndlz
     Blosc version info: 2.0.0a6.dev ($Date:: 2018-05-18 #$)
     Using 4 threads (previously using 1)
     Using blosclz compressor
@@ -39,9 +39,9 @@
 #include "test_common.h"
 
 
-#define SIZE 100*100
-#define SHAPE {100,100}
-#define CHUNKSHAPE {1,100,100}
+#define SIZE 12*12
+#define SHAPE {12,12}
+#define CHUNKSHAPE {8,8}
 
 static int test_ndlz(int ndim, uint32_t shape[2]) {
   static float data[SIZE];
@@ -51,7 +51,12 @@ static int test_ndlz(int ndim, uint32_t shape[2]) {
   int dsize = SIZE, csize;
 
   for (int i = 0; i < SIZE; i++) {
-    data[i] = i;
+    data[i] = (float) i;
+  }
+
+  printf("\n data: \n");
+  for (int j = 0; j < SIZE; j++) {
+    printf("%f, ", data[j]);
   }
 
   /* Compress with clevel=5 and shuffle active  */

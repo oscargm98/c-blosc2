@@ -6,16 +6,20 @@
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
 
-#include <stdio.h>
-#include "fastcopy.h"
-#include "blosc2-common.h"
+
 
 #ifndef NDLZ_H
 #define NDLZ_H
-
 #if defined (__cplusplus)
 extern "C" {
 #endif
+#define XXH_INLINE_ALL
+#include <xxhash.h>
+/*
+#include <stdio.h>
+#include "blosc2-common.h"
+#include "fastcopy.h"
+*/
 
 #define NDLZ_VERSION_STRING "1.0.0"
 

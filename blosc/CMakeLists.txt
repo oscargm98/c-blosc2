@@ -49,10 +49,12 @@ endif()
 if(NOT DEACTIVATE_ZSTD)
     if(ZSTD_FOUND)
         set(BLOSC_INCLUDE_DIRS ${BLOSC_INCLUDE_DIRS} ${ZSTD_INCLUDE_DIR})
+        message(STATUS "Zstd found")
     else()
         set(ZSTD_LOCAL_DIR ${INTERNAL_LIBS}/zstd-1.4.5)
         set(BLOSC_INCLUDE_DIRS ${BLOSC_INCLUDE_DIRS} ${ZSTD_LOCAL_DIR}
                 ${ZSTD_LOCAL_DIR}/common ${ZSTD_LOCAL_DIR}/dictBuilder)
+        message(STATUS "Zstd included")
     endif()
 endif()
 
