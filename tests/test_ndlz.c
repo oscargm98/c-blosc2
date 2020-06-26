@@ -44,19 +44,16 @@
 #define CHUNKSHAPE {8,8}
 
 static int test_ndlz(int ndim, uint32_t shape[2]) {
-  static float data[SIZE];
-  static float data_out[SIZE];
-  static float data_dest[SIZE];
-  int isize = SIZE, osize = SIZE;
+  static uint8_t data[SIZE];
+  static uint8_t data_out[SIZE];
+  static uint8_t data_dest[SIZE];
+  int isize = SIZE, osize = (int) (17 * shape[0] * shape[1] / 16);
   int dsize = SIZE, csize;
 
-  for (int i = 0; i < SIZE; i++) {
-    data[i] = (float) i;
-  }
-
   printf("\n data: \n");
-  for (int j = 0; j < SIZE; j++) {
-    printf("%f, ", data[j]);
+  for (int i = 0; i < SIZE; i++) {
+    data[i] = i;
+    printf("%hhu, ", data[i]);
   }
 
   /* Compress with clevel=5 and shuffle active  */
