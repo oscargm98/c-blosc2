@@ -57,11 +57,15 @@
 #define HASH_LOG (12)
 
 
-int ndlz_compress_2(const int clevel, const void* input, int length,
-                    void* output, int maxout, uint8_t ndim, uint32_t shape[2]) {
+int ndlz_compress(blosc2_context* context, const void* input, int length,
+                    void* output, int maxout) {
 
-  if (length != (shape[0] * shape[1])) {
-      return -1;
+  int clevel = context->clevel;
+  int ndim = context->ndim;  // the number of dimensions of the block
+  int32_t* blockshape = context->blockshape;  // the shape of block
+
+  if (length != (blockshape[0] * blockshape[1])) {
+    return -1;
   }
 
   uint8_t* ip = (uint8_t *) input;
@@ -86,7 +90,7 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
   }
 
   /* input and output buffer cannot be less than 16 and 66 bytes or we can get into trouble */
-  int overhead = 17 + (shape[0] * shape[1] / 16 - 1) * 3;
+  int overhead = 17 + (blockshape[0] * blockshape[1] / 16 - 1) * 3;
   if (length < 16 || maxout < overhead) {
     printf("Incorrect length or maxout");
     return 0;
@@ -96,16 +100,16 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
 
   /* we start with literal copy */
   *op++ = ndim;
-  memcpy(op, &shape[0], 4);
+  memcpy(op, &blockshape[0], 4);
   op += 4;
-  memcpy(op, &shape[1], 4);
+  memcpy(op, &blockshape[1], 4);
   op += 4;
 
   //printf("\n obase %d \n", (int) obase);
 
   uint32_t i_stop[2];
   for (int i = 0; i < 2; ++i) {
-    i_stop[i] = shape[i] / 4;
+    i_stop[i] = blockshape[i] / 4;
   }
 
   /* main loop */
@@ -114,10 +118,10 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
       memset(buffercpy, 0, 16);
-      uint32_t orig = ii[0] * 4 * shape[1] + ii[1] * 4;
+      uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
       //printf("\n orig: %u \n", orig);
       for (int i = 0; i < 4; i++) {
-        int ind = orig + i * shape[1];
+        int ind = orig + i * blockshape[1];
         memcpy(buffercpy, &ip[ind], 4);
         //printf("\n ip[ind]: %hhu, ", ip[ind]);
         //printf("\n buffcpy: %hhu, ", buffercpy[0]);
@@ -230,7 +234,7 @@ static unsigned char* copy_match_16(unsigned char *op, const unsigned char *matc
 #endif
 
 
-int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
+int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   uint8_t* ip = (uint8_t*)input;
   uint8_t* ip_limit = ip + length;
   uint8_t* op = (uint8_t*)output;
