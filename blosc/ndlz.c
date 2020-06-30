@@ -70,18 +70,14 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
   uint32_t hval;
   uint8_t *buffercpy = malloc(16 * sizeof(uint8_t));
 
-  printf("\n ip: \n");
+  //printf("\n ip: \n");
   for (int j = 0; j < length; j++) {
-    printf("%hhu, ",  ip[j]);
+    //printf("%hhu, ",  ip[j]);
   }
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
-  double maxlength_[10] = {-1, .07, .1, .15, .25, .45, .5, .5, .5, .5};
-  int32_t maxlength = (int32_t)(length * maxlength_[clevel]);
-  if (maxlength > (int32_t)maxout) {
-    maxlength = (int32_t)maxout;
-  }
-  op_limit = op + maxlength;
+
+  op_limit = op + maxout;
 
   // Initialize the hash table to distances of 0
   for (unsigned i = 0; i < (1U << 12U); i++) {
@@ -90,10 +86,12 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
 
   /* input and output buffer cannot be less than 16 and 66 bytes or we can get into trouble */
   int overhead = 17 + (shape[0] * shape[1] / 16 - 1) * 3;
-  if (length < 16 || maxout < overhead) {   // MIRAR EL OVERHEAD
+  if (length < 16 || maxout < overhead) {
     printf("Incorrect length or maxout");
     return 0;
   }
+
+  uint8_t* obase = op;
 
   /* we start with literal copy */
   *op++ = ndim;
@@ -102,10 +100,7 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
   memcpy(op, &shape[1], 4);
   op += 4;
 
-  uint8_t* obase = op;
-  int counter = 0;
-
-  printf("\n obase %d \n", (int) obase);
+  //printf("\n obase %d \n", (int) obase);
 
   uint32_t i_stop[2];
   for (int i = 0; i < 2; ++i) {
@@ -119,7 +114,7 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
       memset(buffercpy, 0, 16);
       uint32_t orig = ii[0] * 4 * shape[1] + ii[1] * 4;
-      printf("\n orig: %u \n", orig);
+      //printf("\n orig: %u \n", orig);
       for (int i = 0; i < 4; i++) {
         int ind = orig + i * shape[1];
         memcpy(buffercpy, &ip[ind], 4);
@@ -129,9 +124,9 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
       }
 
       buffercpy -= 16;
-      printf("\n Buffercpy: \n");
+      //printf("\n Buffercpy: \n");
       for (int j = 0; j < 16; j++) {
-        printf("%hhu, ", buffercpy[j]);
+        //printf("%hhu, ", buffercpy[j]);
       }
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
@@ -144,35 +139,37 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
       /* find potential match */
       hval = XXH32(buffercpy, 16, 1);        // calculate cell hash
       hval >>= 32U - 12U;
+      //printf("\n hval: %d \n", hval);
       ref = obase + htab[hval];
 
       /* calculate distance to the match */
-      distance = (int32_t) (anchor - ref);
+      if (htab[hval] == 0) {
+        distance = 0;
+      } else {
+        distance = (int32_t) (anchor - ref);
+      }
+      //printf("\n distance: %d \n", distance);
+      //printf("\n ref: %d \n", ref);
 
       uint8_t token;
       if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no match
         htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
         token = 0;
         *op++ = token;
-        counter++;
         memcpy(op, buffercpy, 16);
         op += 16;
-        counter += 16;
       } else {   //match
         token = (uint8_t )(1U << 7U);
         *op++ = token;
-        counter++;
         uint16_t offset = (uint16_t) (anchor - obase - htab[hval]);
         memcpy(op, &offset, 2);
         op += 2;
-        counter += 2;
-        printf("\n match \n");
+        //printf("\n match \n");
       }
-      printf("\n counter %d \n", (int) counter);
     }
   }
-  printf("\n op %d obase %d return %d \n", (int) op, (int) obase, (int)(op - obase));
-  return counter;
+  //printf("\n op %d obase %d return %d \n", (int) op, (int) obase, (int)(op - obase));
+  return (int)(op - obase);
 }
 
 
@@ -259,7 +256,7 @@ int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
 
   /* main loop */
   uint32_t ii[2];
-  int ind;
+  uint32_t ind;
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       token = *ip++;
@@ -275,7 +272,7 @@ int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
         return 0;
       }
       // fill op with buffercpy
-      uint32_t orig = ii[0] * 4 * shape[1] + ii[1];
+      uint32_t orig = ii[0] * 4 * shape[1] + ii[1] * 4;
       for (int i = 0; i < 4; i++) {
         ind = orig + i * shape[1];
         memcpy(&op[ind], buffercpy, 4);
@@ -283,7 +280,8 @@ int ndlz_decompress_2(const void* input, int length, void* output, int maxout) {
       }
     }
   }
-  ind += shape[1] + 4;
+  //printf("ind: %d", ind);
+  ind += 4;
   if (ind != (shape[0] * shape[1])) {
     printf("Output size is not compatible with embeded shape \n");
     return 0;

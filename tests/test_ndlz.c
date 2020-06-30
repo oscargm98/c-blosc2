@@ -38,23 +38,27 @@
 #include <ndlz.c>
 #include "test_common.h"
 
-
-#define SIZE 12*12
-#define SHAPE {12,12}
-#define CHUNKSHAPE {8,8}
+#define SHAPE1 1024
+#define SHAPE2 1024
+#define SIZE SHAPE1 * SHAPE2
+#define SHAPE {SHAPE1, SHAPE2}
+#define OSIZE (17 * SIZE / 16) + 9
 
 static int test_ndlz(int ndim, uint32_t shape[2]) {
-  static uint8_t data[SIZE];
-  static uint8_t data_out[SIZE];
-  static uint8_t data_dest[SIZE];
-  int isize = SIZE, osize = (int) (17 * shape[0] * shape[1] / 16);
-  int dsize = SIZE, csize;
+  uint8_t data[SIZE];
+  uint8_t data_out[OSIZE];
+  uint8_t data_dest[SIZE];
+  int isize = SIZE;
+  int osize = OSIZE;
+  int dsize = SIZE;
+  int csize;
 
-  printf("\n data: \n");
+  //printf("\n data: \n");
   for (int i = 0; i < SIZE; i++) {
     data[i] = i;
-    printf("%hhu, ", data[i]);
+    //printf("%hhu, ", data[i]);
   }
+  FILE *f = fopen("out1024x1024.txt", "r");
 
   /* Compress with clevel=5 and shuffle active  */
   csize = ndlz_compress_2(5, data, isize, data_out, osize, ndim, shape);
