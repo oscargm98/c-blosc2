@@ -85,6 +85,11 @@ struct blosc2_context_s {
   int block_maskout_nitems;
   /* The number of items in block_maskout array (must match
    * the number of blocks in chunk) */
+  int ndim;
+  /* The number of dimensions of a block (for nd-capable codecs) */
+  int32_t* blockshape;
+  /* The shape of a block (for nd-capable codecs).
+   * Pointer to an array of ndim ints. */
   blosc2_schunk* schunk;
   /* Associated super-chunk (if available) */
   struct thread_context* serial_context;

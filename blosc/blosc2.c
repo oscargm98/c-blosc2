@@ -809,7 +809,7 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
     }
   #endif /* HAVE_ZSTD */
     else if (context->compcode == BLOSC_NDLZ) {
-      cbytes = ndlz_compress(context->clevel, _src + j * neblock,
+      cbytes = ndlz_compress(context, _src + j * neblock,
                              (int)neblock, dest, (int)maxout);
     }
 
@@ -2886,6 +2886,8 @@ blosc2_context* blosc2_create_cctx(blosc2_cparams cparams) {
     context->filters[i] = cparams.filters[i];
     context->filters_meta[i] = cparams.filters_meta[i];
   }
+  context->ndim = cparams.ndim;
+  context->blockshape = cparams.blockshape;
   context->nthreads = cparams.nthreads;
   context->new_nthreads = context->nthreads;
   context->blocksize = cparams.blocksize;

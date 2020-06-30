@@ -63,6 +63,7 @@ int ndlz_compress_2(const int clevel, const void* input, int length,
   if (length != (shape[0] * shape[1])) {
       return -1;
   }
+
   uint8_t* ip = (uint8_t *) input;
   uint8_t* op = (uint8_t *) output;
   uint8_t* op_limit;
