@@ -314,8 +314,11 @@ static uint8_t *get_match_32(uint8_t *ip, const uint8_t *ip_bound, const uint8_t
 #endif
 
 
-int ndlz_compress(const int clevel, const void* input, int length,
+int ndlz_compress(blosc2_context* context, const void* input, int length,
                      void* output, int maxout) {
+  int clevel = context->clevel;
+  int ndim = context->ndim;  // the number of dimensions of the block
+  int32_t* blockshape = context->blockshape;  // the shape of block
   uint8_t* ibase = (uint8_t*)input;
   uint8_t* ip = ibase;
   uint8_t* ip_bound = ibase + length - IP_BOUNDARY;

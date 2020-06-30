@@ -659,7 +659,12 @@ typedef struct {
   //!< The prefilter function.
   blosc2_prefilter_params *pparams;
   //!< The prefilter parameters.
+  int ndim;
+  //!< The number of dimensions of a block (1).
+  int32_t* blockshape;
+  //!< The shape of a block (NULL). Pointer to an array of ndim ints.
 } blosc2_cparams;
+
 
 /**
  * @brief Default struct for compression params meant for user initialization.
@@ -667,7 +672,7 @@ typedef struct {
 static const blosc2_cparams BLOSC2_CPARAMS_DEFAULTS = {
         BLOSC_BLOSCLZ, 5, 0, 8, 1, 0, NULL,
         {0, 0, 0, 0, 0, BLOSC_SHUFFLE}, {0, 0, 0, 0, 0, 0},
-        NULL, NULL };
+        NULL, NULL, 1, NULL };
 
 /**
   @brief The parameters for creating a context for decompression purposes.

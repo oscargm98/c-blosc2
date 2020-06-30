@@ -9,6 +9,7 @@
 
 #ifndef NDLZ_H
 #define NDLZ_H
+#include "context.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -37,7 +38,7 @@ extern "C" {
   The input buffer and the output buffer can not overlap.
 */
 
-int ndlz_compress(int opt_level, const void* input, int length, void* output, int maxout);
+int ndlz_compress(blosc2_context* context, const void* input, int length, void* output, int maxout);
 
 /**
   Decompress a block of compressed data and returns the size of the
