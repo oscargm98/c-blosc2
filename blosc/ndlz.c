@@ -60,6 +60,7 @@
 int ndlz_compress(blosc2_context* context, const void* input, int length,
                     void* output, int maxout) {
 
+  printf("compress");
   int clevel = context->clevel;
   int ndim = context->ndim;  // the number of dimensions of the block
   int32_t* blockshape = context->blockshape;  // the shape of block
@@ -75,10 +76,6 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint32_t hval;
   uint8_t *buffercpy = malloc(16 * sizeof(uint8_t));
 
-  //printf("\n ip: \n");
-  for (int j = 0; j < length; j++) {
-    //printf("%hhu, ",  ip[j]);
-  }
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
 
