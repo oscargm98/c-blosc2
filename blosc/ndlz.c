@@ -60,12 +60,13 @@
 int ndlz_compress(blosc2_context* context, const void* input, int length,
                     void* output, int maxout) {
 
-  printf("compress");
   int clevel = context->clevel;
   int ndim = context->ndim;  // the number of dimensions of the block
   int32_t* blockshape = context->blockshape;  // the shape of block
 
   if (length != (blockshape[0] * blockshape[1])) {
+    //printf("\n len: %d \n", length);
+    //printf("\n prod: %d \n", blockshape[0] * blockshape[1]);
     return -1;
   }
 
@@ -232,6 +233,9 @@ static unsigned char* copy_match_16(unsigned char *op, const unsigned char *matc
 
 
 int ndlz_decompress(const void* input, int length, void* output, int maxout) {
+
+  printf("\n decompress \n");
+
   uint8_t* ip = (uint8_t*)input;
   uint8_t* ip_limit = ip + length;
   uint8_t* op = (uint8_t*)output;
@@ -251,6 +255,9 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   memcpy(&shape[1], ip, 4);
   ip += 4;
 
+  printf("\n shape0: %u", shape[0]);
+  printf("\n shape1: %u", shape[1]);
+
   uint32_t i_stop[2];
   for (int i = 0; i < 2; ++i) {
     i_stop[i] = shape[i] / 4;
@@ -266,6 +273,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         buffercpy = ip;
         ip += 16;
       } else if (token == (uint8_t)(1U << 7U)) {  // match
+        printf("match");
         uint16_t offset = *((uint16_t*) ip);
         buffercpy = ip - offset;
         ip += 2;
@@ -281,6 +289,10 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         buffercpy += 4;
       }
     }
+  }
+  printf("op: \n");
+  for (int i = 0; i < shape[0] * shape[1]; i++) {
+    printf("%u, ", ((uint32_t*) op)[i]);
   }
   //printf("ind: %d", ind);
   ind += 4;

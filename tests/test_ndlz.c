@@ -38,8 +38,8 @@
 #include <ndlz.c>
 #include "test_common.h"
 
-#define SHAPE1 1024
-#define SHAPE2 1024
+#define SHAPE1 12
+#define SHAPE2 12
 #define SIZE SHAPE1 * SHAPE2
 #define SHAPE {SHAPE1, SHAPE2}
 #define OSIZE (17 * SIZE / 16) + 9
@@ -47,8 +47,9 @@
 static int test_ndlz(int ndim, uint32_t *shape) {
 
   uint32_t data[SIZE];
-  uint32_t data_out[OSIZE];
-  uint32_t data_dest[SIZE];
+  uint32_t data2[SIZE];
+  uint32_t *data_out = malloc(OSIZE);
+  uint32_t *data_dest = malloc(SIZE);
   int isize = SIZE;
   int osize = OSIZE;
   int dsize = SIZE;
@@ -64,18 +65,24 @@ static int test_ndlz(int ndim, uint32_t *shape) {
   cparams.ndim = ndim;
   cparams.blockshape = shape;
   cparams.blocksize = SIZE;
-  blosc2_context *cctx = blosc2_create_cctx(cparams);
+  blosc2_context *cctx;
+  cctx = blosc2_create_cctx(cparams);
 
+  FILE *f = fopen("out1024x1024.txt", "r");
   printf("\n data: \n");
   for (int i = 0; i < SIZE; i++) {
     data[i] = i;
-    //printf("%hhu, ", data[i]);
+    printf("%u, ", data[i]);
   }
-  //FILE *f = fopen("out1024x1024.txt", "r");
+  /*
+  for (int i = 0; i < 15; i += 2) {
+    fscanf(f, "%d", &data2[i]);
+    printf("%u, ", data2[i]);
+  }*/
 
   /* Compress with clevel=5 and shuffle active  */
   csize = ndlz_compress(cctx, data, isize, data_out, osize);
-  /*if (csize == 0) {
+  if (csize == 0) {
     printf("Buffer is uncompressible.  Giving up.\n");
     return 0;
   }
@@ -85,28 +92,35 @@ static int test_ndlz(int ndim, uint32_t *shape) {
   }
 
   printf("Compression: %d -> %d (%.1fx)\n", isize, csize, (1. * isize) / csize);
-*/
+
   /* Decompress  */
- /* dsize = ndlz_decompress(data_out, osize, data_dest, dsize);
+  dsize = ndlz_decompress(data_out, osize, data_dest, dsize);
   if (dsize <= 0) {
     printf("Decompression error.  Error code: %d\n", dsize);
     return dsize;
   }
 
+  printf("data dest: \n");
+  for (int i = 0; i < SIZE; i++) {
+    printf("%u, ", data_dest[i]);
+  }
   for (int i = 0; i < SIZE; i++) {
     if (data[i] != data_dest[i]) {
+      printf("\n i %d, ", i);
+      printf("\n data %u, ", data[i]);
+      printf("data dest: %u, \n", data_dest[i]);
       printf("Decompressed data differs from original!\n");
       return -1;
     }
   }
-*/
+
   printf("Succesful roundtrip!\n");
   return 0;
 }
 
 int main(void) {
   int ndim = 2;
-  uint32_t shape[1024] = {1024, 1024};
+  uint32_t shape[1024] = {SHAPE1, SHAPE2};
 
   /* Run the test. */
   int result = test_ndlz(ndim, shape);
