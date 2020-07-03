@@ -38,47 +38,32 @@
 #include <ndlz.c>
 #include "test_common.h"
 
-#define SHAPE1 12
-#define SHAPE2 12
+#define SHAPE1 32
+#define SHAPE2 32
 #define SIZE SHAPE1 * SHAPE2
 #define SHAPE {SHAPE1, SHAPE2}
-#define OSIZE (17 * SIZE / 16) + 9
+#define OSIZE (17 * SIZE / 16) + 9 + 8 + BLOSC_MAX_OVERHEAD
 
-static int test_ndlz(int ndim, uint32_t *shape) {
+static int test_ndlz(uint8_t *data, int isize, int ndim, uint32_t *shape) {
 
-  uint32_t data[SIZE];
-  uint32_t data2[SIZE];
-  uint32_t *data_out = malloc(OSIZE);
-  uint32_t *data_dest = malloc(SIZE);
-  int isize = SIZE;
-  int osize = OSIZE;
-  int dsize = SIZE;
+  int osize = (17 * isize / 16) + 9 + 8 + BLOSC_MAX_OVERHEAD;
+  int dsize = isize;
   int csize;
+  uint8_t *data_out = malloc(osize);
+  uint8_t *data_dest = malloc(isize);
   blosc2_cparams cparams = BLOSC2_CPARAMS_DEFAULTS;
 
   /* Create a context for compression */
-  cparams.typesize = sizeof(uint32_t);
+  cparams.typesize = sizeof(data);
   cparams.compcode = BLOSC_NDLZ;
   cparams.filters[BLOSC2_MAX_FILTERS - 1] = BLOSC_SHUFFLE;
   cparams.clevel = 5;
   //cparams.nthreads = 1;
   cparams.ndim = ndim;
   cparams.blockshape = shape;
-  cparams.blocksize = SIZE;
+  cparams.blocksize = isize;
   blosc2_context *cctx;
   cctx = blosc2_create_cctx(cparams);
-
-  FILE *f = fopen("out1024x1024.txt", "r");
-  printf("\n data: \n");
-  for (int i = 0; i < SIZE; i++) {
-    data[i] = i;
-    printf("%u, ", data[i]);
-  }
-  /*
-  for (int i = 0; i < 15; i += 2) {
-    fscanf(f, "%d", &data2[i]);
-    printf("%u, ", data2[i]);
-  }*/
 
   /* Compress with clevel=5 and shuffle active  */
   csize = ndlz_compress(cctx, data, isize, data_out, osize);
@@ -100,15 +85,12 @@ static int test_ndlz(int ndim, uint32_t *shape) {
     return dsize;
   }
 
-  printf("data dest: \n");
-  for (int i = 0; i < SIZE; i++) {
+  /* printf("data dest: \n");
+  for (int i = 0; i < isize; i++) {
     printf("%u, ", data_dest[i]);
-  }
-  for (int i = 0; i < SIZE; i++) {
+  }*/
+  for (int i = 0; i < isize; i++) {
     if (data[i] != data_dest[i]) {
-      printf("\n i %d, ", i);
-      printf("\n data %u, ", data[i]);
-      printf("data dest: %u, \n", data_dest[i]);
       printf("Decompressed data differs from original!\n");
       return -1;
     }
@@ -118,11 +100,88 @@ static int test_ndlz(int ndim, uint32_t *shape) {
   return 0;
 }
 
-int main(void) {
+int no_matches() {
   int ndim = 2;
-  uint32_t shape[1024] = {SHAPE1, SHAPE2};
+  uint32_t shape[2] = {32, 32};
+  int isize = 32 * 32;
+  uint8_t data[isize];
+  for (int i = 0; i < isize; i++) {
+    data[i] = i;
+  }
 
   /* Run the test. */
-  int result = test_ndlz(ndim, shape);
+  int result = test_ndlz(data, isize, ndim, shape);
   return result;
+}
+
+int all_matches() {
+  int ndim = 2;
+  uint32_t shape[2] = {32, 32};
+  int isize = 32 * 32;
+  uint8_t data[isize];
+  for (int i = 0; i < isize; i++) {
+    data[i] = 0;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int some_matches() {
+  int ndim = 2;
+  uint32_t shape[2] = {32, 32};
+  int isize = 32 * 32;
+  uint8_t data[isize];
+  for (int i = 0; i < isize; i++) {
+    data[i] = i;
+  }
+  for (int i = SIZE / 2; i < SIZE; i++) {
+    data[i] = 0;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int image1() {
+  int ndim = 2;
+  uint32_t shape[2] = {1024, 1024};
+  int isize = 1024 * 1024;
+  uint8_t data[isize];
+  FILE *f = fopen("out1024x1024.txt", "r");
+
+  char *aux = malloc(3 * SIZE);
+  fgets(aux, (3 * SIZE) - 4, f);
+  for (int i = 0; i < 15; i += 3) {
+    data[i] = (uint8_t) aux;
+    printf("%u, ", data[i]);
+  }
+/*
+  char aux;
+  for (int i = 0; i < 15; i++) {
+    fscanf(f, "%s", &aux);
+    data2[i] = (uint8_t) aux;
+    printf("%u, ", data2[i]);
+    fscanf(f, "%s", &aux);
+    fscanf(f, "%s", &aux);
+  }
+*/
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int main(void) {
+  int result = no_matches();
+  printf("no_matches: %d obtained \n \n", result);
+  result = all_matches();
+  printf("all_matches: %d obtained \n \n", result);
+  result = some_matches();
+  printf("some_matches: %d obtained \n \n", result);
+  /*result = image1();
+  printf("image1: %d obtained \n \n", result);
+*/
 }
