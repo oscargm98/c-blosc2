@@ -73,7 +73,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint8_t* op_limit;
   uint32_t htab[1U << 12U];
   uint32_t hval;
-  uint8_t *buffercpy = malloc(16 * sizeof(uint8_t));
+  uint8_t* buffercpy = malloc(16 * sizeof(uint8_t));
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -109,24 +109,31 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   }
 
   /* main loop */
+  uint32_t padding[2];
   uint32_t ii[2];
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
       memset(buffercpy, 0, 16);
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
-      //printf("\n orig: %u \n", orig);
-      for (int i = 0; i < 4; i++) {
+      if ((ii[0] == i_stop[0] - 1) || (ii[1] == i_stop[1] - 1)) {
+        padding[0] = (blockshape[0] % 4 == 0) ? 4 : blockshape[0] % 4;
+        padding[1] = (blockshape[1] % 4 == 0) ? 4 : blockshape[1] % 4;
+      } else {
+        padding[0] = 4;
+        padding[1] = 4;
+      }
+      for (int i = 0; i < padding[0]; i++) {
         int ind = orig + i * blockshape[1];
-        memcpy(buffercpy, &ip[ind], 4);
-        buffercpy += 4;
+        memcpy(buffercpy, &ip[ind], padding[1]);
+        buffercpy += padding[1];
       }
       buffercpy -= 16;
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
         return 0;
       }
-      const uint8_t *ref;
+      const uint8_t* ref;
       uint32_t distance;
       uint8_t* anchor = op;    /* comparison starting-point */
 
@@ -155,6 +162,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         uint16_t offset = (uint16_t) (anchor - obase - htab[hval]);
         memcpy(op, &offset, 2);
         op += 2;
+      }
+
+      if((op - obase) > length) {
+        return 0;
       }
     }
   }
@@ -224,7 +235,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   uint8_t* ip_limit = ip + length;
   uint8_t* op = (uint8_t*)output;
   uint8_t ndim;
-  uint32_t shape[2];
+  uint32_t blockshape[2];
   uint8_t* buffercpy;
   uint8_t token;
   if (NDLZ_UNEXPECT_CONDITIONAL(length <= 0)) {
@@ -234,18 +245,21 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   /* we start with literal copy */
   ndim = *ip;
   ip ++;
-  memcpy(&shape[0], ip, 4);
+  memcpy(&blockshape[0], ip, 4);
   ip += 4;
-  memcpy(&shape[1], ip, 4);
+  memcpy(&blockshape[1], ip, 4);
   ip += 4;
+
+  memset(op, 0, blockshape[0] * blockshape[1]);
 
   uint32_t i_stop[2];
   for (int i = 0; i < 2; ++i) {
-    i_stop[i] = shape[i] / 4;
+    i_stop[i] = blockshape[i] / 4;
   }
 
   /* main loop */
   uint32_t ii[2];
+  uint32_t padding[2];
   uint32_t ind;
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
@@ -262,17 +276,25 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         return 0;
       }
       // fill op with buffercpy
-      uint32_t orig = ii[0] * 4 * shape[1] + ii[1] * 4;
-      for (int i = 0; i < 4; i++) {
-        ind = orig + i * shape[1];
-        memcpy(&op[ind], buffercpy, 4);
-        buffercpy += 4;
+      if ((ii[0] == i_stop[0] - 1) || (ii[1] == i_stop[1] - 1)) {
+        padding[0] = (blockshape[0] % 4 == 0) ? 4 : blockshape[0] % 4;
+        padding[1] = (blockshape[1] % 4 == 0) ? 4 : blockshape[1] % 4;
+      } else {
+        padding[0] = 4;
+        padding[1] = 4;
+      }
+
+      uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
+      for (int i = 0; i < padding[0]; i++) {
+        ind = orig + i * blockshape[1];
+        memcpy(&op[ind], buffercpy, padding[1]);
+        buffercpy += padding[1];
       }
     }
   }
-  ind += 4;
-  if (ind != (shape[0] * shape[1])) {
-    printf("Output size is not compatible with embeded shape \n");
+  ind += padding[1];
+  if (ind != (blockshape[0] * blockshape[1])) {
+    printf("Output size is not compatible with embeded blockshape \n");
     return 0;
   }
   if (ind > maxout) {

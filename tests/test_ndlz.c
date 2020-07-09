@@ -97,13 +97,13 @@ static int test_ndlz(uint8_t *data, int isize, int ndim, uint32_t *shape) {
   }
 
   printf("Succesful roundtrip!\n");
-  return 0;
+  return dsize - csize;
 }
 
 int no_matches() {
   int ndim = 2;
-  uint32_t shape[2] = {32, 32};
-  int isize = 32 * 32;
+  uint32_t shape[2] = {12, 12};
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   for (int i = 0; i < isize; i++) {
     data[i] = i;
@@ -117,7 +117,7 @@ int no_matches() {
 int all_matches() {
   int ndim = 2;
   uint32_t shape[2] = {32, 32};
-  int isize = 32 * 32;
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   for (int i = 0; i < isize; i++) {
     data[i] = 0;
@@ -131,7 +131,24 @@ int all_matches() {
 int some_matches() {
   int ndim = 2;
   uint32_t shape[2] = {32, 32};
-  int isize = 32 * 32;
+  int isize = (int)(shape[0] * shape[1]);
+  uint8_t data[isize];
+  for (int i = 0; i < isize; i++) {
+    data[i] = i;
+  }
+  for (int i = SIZE / 2; i < SIZE; i++) {
+    data[i] = 0;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int padding_some() {
+  int ndim = 2;
+  uint32_t shape[2] = {13, 15};
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   for (int i = 0; i < isize; i++) {
     data[i] = i;
@@ -148,7 +165,7 @@ int some_matches() {
 int image1() {
   int ndim = 2;
   uint32_t shape[2] = {1024, 1024};
-  int isize = 1024 * 1024;
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   FILE *f = fopen("out1024x1024.txt", "r");
 
@@ -181,6 +198,8 @@ int main(void) {
   printf("all_matches: %d obtained \n \n", result);
   result = some_matches();
   printf("some_matches: %d obtained \n \n", result);
+  result = padding_some();
+  printf("pad_some: %d obtained \n \n", result);
   /*result = image1();
   printf("image1: %d obtained \n \n", result);
 */
