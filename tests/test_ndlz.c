@@ -147,14 +147,18 @@ int some_matches() {
 
 int padding_some() {
   int ndim = 2;
-  uint32_t shape[2] = {13, 15};
+  uint32_t shape[2] = {15, 14};
   int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
-  for (int i = 0; i < isize; i++) {
+  for (int i = 0; i < 2 * isize / 3; i++) {
+    data[i] = 0;
+  }
+  for (int i = 2 * isize / 3; i < isize; i++) {
     data[i] = i;
   }
-  for (int i = SIZE / 2; i < SIZE; i++) {
-    data[i] = 0;
+  printf("\n data \n");
+  for (int i = 0; i < isize; i++) {
+    printf("%d, ", data[i]);
   }
 
   /* Run the test. */
@@ -192,13 +196,15 @@ int image1() {
 }
 
 int main(void) {
+  /*
   int result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
   result = all_matches();
   printf("all_matches: %d obtained \n \n", result);
   result = some_matches();
   printf("some_matches: %d obtained \n \n", result);
-  result = padding_some();
+  */
+  int result = padding_some();
   printf("pad_some: %d obtained \n \n", result);
   /*result = image1();
   printf("image1: %d obtained \n \n", result);
