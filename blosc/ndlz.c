@@ -115,7 +115,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
-      printf("\n ii: {%d, %d} \n", ii[0], ii[1]);
+      printf("\n ii: {%d, %d} ", ii[0], ii[1]);
       memset(buffercpy, 0, 16);
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
       if (ii[0] == i_stop[0] - 1) {
@@ -132,9 +132,14 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       for (int i = 0; i < padding[0]; i++) {
         int ind = orig + i * blockshape[1];
         memcpy(buffercpy, &ip[ind], padding[1]);
-        buffercpy += padding[1];
+        buffercpy += 4;
       }
-      buffercpy -= 16;
+      buffercpy -= 4 * padding[0];
+
+      printf("\n buffcpy \n");
+      for (int i = 0; i < 16; i++) {
+        printf("%d, ", buffercpy[i]);
+      }
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
         return 0;
@@ -290,19 +295,32 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         return 0;
       }
       // fill op with buffercpy
-      if ((ii[0] == i_stop[0] - 1) || (ii[1] == i_stop[1] - 1)) {
+
+      if (ii[0] == i_stop[0] - 1) {
         padding[0] = (blockshape[0] % 4 == 0) ? 4 : blockshape[0] % 4;
-        padding[1] = (blockshape[1] % 4 == 0) ? 4 : blockshape[1] % 4;
       } else {
         padding[0] = 4;
+      }
+      if (ii[1] == i_stop[1] - 1) {
+        padding[1] = (blockshape[1] % 4 == 0) ? 4 : blockshape[1] % 4;
+      } else {
         padding[1] = 4;
       }
 
+      printf("\n pad0: %d, pad1: %d", padding[0], padding[1]);
+
+      printf("\n buffercpy \n");
+      for (int i = 0; i < 16; i++) {
+        printf("%d, ", buffercpy[i]);
+      }
+
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
-      for (int i = 0; i < padding[0]; i++) {
-        ind = orig + i * blockshape[1];
-        memcpy(&op[ind], buffercpy, padding[1]);
-        buffercpy += padding[1];
+      for (int i = 0; i < 4; i++) {
+        if (i < padding[0]) {
+          ind = orig + i * blockshape[1];
+          memcpy(&op[ind], buffercpy, padding[1]);
+        }
+        buffercpy += 4;
       }
     }
   }
