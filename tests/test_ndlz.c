@@ -114,7 +114,21 @@ int no_matches() {
   return result;
 }
 
-int all_matches() {
+int no_matches_pad() {
+  int ndim = 2;
+  uint32_t shape[2] = {11, 10};
+  int isize = (int)(shape[0] * shape[1]);
+  uint8_t data[isize];
+  for (int i = 0; i < isize; i++) {
+    data[i] = i;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int all_elem_eq() {
   int ndim = 2;
   uint32_t shape[2] = {32, 32};
   int isize = (int)(shape[0] * shape[1]);
@@ -125,6 +139,37 @@ int all_matches() {
 
   /* Run the test. */
   int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int all_elem_pad() {
+  int ndim = 2;
+  uint32_t shape[2] = {29, 31};
+  int isize = (int)(shape[0] * shape[1]);
+  uint8_t data[isize];
+  for (int i = 0; i < isize; i++) {
+    data[i] = 0;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, ndim, shape);
+  return result;
+}
+
+int same_cells() {
+  int ndim = 2;
+  uint32_t shape[2] = {32, 32};
+  int isize = (int)(shape[0] * shape[1]);
+  uint8_t *data[isize];
+  for (int i = 0; i < (isize / 4); i++) {
+    data[i * 4] = (uint8_t *) 0;
+    data[i * 4 + 1] = (uint8_t *) 1;
+    data[i * 4 + 2] = (uint8_t *) 2;
+    data[i * 4 + 3] = (uint8_t *) 3;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz((uint8_t *) data, isize, ndim, shape);
   return result;
 }
 
@@ -156,10 +201,6 @@ int padding_some() {
   for (int i = 2 * isize / 3; i < isize; i++) {
     data[i] = i;
   }
-  printf("\n data \n");
-  for (int i = 0; i < isize; i++) {
-    printf("%d, ", data[i]);
-  }
 
   /* Run the test. */
   int result = test_ndlz(data, isize, ndim, shape);
@@ -171,6 +212,7 @@ int image1() {
   uint32_t shape[2] = {1024, 1024};
   int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
+  uint8_t data2[isize];
   FILE *f = fopen("out1024x1024.txt", "r");
 
   char *aux = malloc(3 * SIZE);
@@ -179,32 +221,37 @@ int image1() {
     data[i] = (uint8_t) aux;
     printf("%u, ", data[i]);
   }
-/*
-  char aux;
+
+  char *aux2;
   for (int i = 0; i < 15; i++) {
-    fscanf(f, "%s", &aux);
-    data2[i] = (uint8_t) aux;
+    fscanf(f, "%s", aux2);
+    data2[i] = (uint8_t) aux2;
     printf("%u, ", data2[i]);
-    fscanf(f, "%s", &aux);
-    fscanf(f, "%s", &aux);
+    fscanf(f, "%s", aux2);
+    fscanf(f, "%s", aux2);
   }
-*/
+
 
   /* Run the test. */
-  int result = test_ndlz(data, isize, ndim, shape);
+  int result = test_ndlz(data2, isize, ndim, shape);
   return result;
 }
 
 int main(void) {
-  /*
+
   int result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
-  result = all_matches();
-  printf("all_matches: %d obtained \n \n", result);
+  result = no_matches_pad();
+  printf("no_matches_pad: %d obtained \n \n", result);
+  result = same_cells();
+  printf("same_cells: %d obtained \n \n", result);
+  result = all_elem_eq();
+  printf("all_elem_eq: %d obtained \n \n", result);
+  result = all_elem_pad();
+  printf("all_elem_pad: %d obtained \n \n", result);
   result = some_matches();
   printf("some_matches: %d obtained \n \n", result);
-  */
-  int result = padding_some();
+  result = padding_some();
   printf("pad_some: %d obtained \n \n", result);
   /*result = image1();
   printf("image1: %d obtained \n \n", result);

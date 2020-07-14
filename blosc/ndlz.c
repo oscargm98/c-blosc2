@@ -101,21 +101,17 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   memcpy(op, &blockshape[1], 4);
   op += 4;
 
-  //printf("\n obase %d \n", (int) obase);
-
   uint32_t i_stop[2];
   for (int i = 0; i < 2; ++i) {
     i_stop[i] = (blockshape[i] + 3) / 4;
   }
 
-  printf("\n i_stop: {%d, %d} \n", i_stop[0], i_stop[1]);
   /* main loop */
   uint32_t padding[2];
   uint32_t ii[2];
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
-      printf("\n ii: {%d, %d} ", ii[0], ii[1]);
       memset(buffercpy, 0, 16);
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
       if (ii[0] == i_stop[0] - 1) {
@@ -128,18 +124,12 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       } else {
         padding[1] = 4;
       }
-      printf("\n pad0: %d, pad1: %d", padding[0], padding[1]);
       for (int i = 0; i < padding[0]; i++) {
         int ind = orig + i * blockshape[1];
         memcpy(buffercpy, &ip[ind], padding[1]);
         buffercpy += 4;
       }
       buffercpy -= 4 * padding[0];
-
-      printf("\n buffcpy \n");
-      for (int i = 0; i < 16; i++) {
-        printf("%d, ", buffercpy[i]);
-      }
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
         return 0;
@@ -162,11 +152,27 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
 
       uint8_t token;
       if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no match
-        htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
-        token = 0;
-        *op++ = token;
-        memcpy(op, buffercpy, 16);
-        op += 16;
+        // calcular si son todos iguales
+        bool alleq = true;
+        for (int i = 1; i < 16; i++) {
+          if (buffercpy[i] != buffercpy[0]) {
+            alleq = false;
+            break;
+          }
+        }
+
+        if (alleq) {
+          // nuevo token
+          token = (uint8_t)((1U << 7U) | (1U << 6U));
+          *op++ = token;
+          *op++ = buffercpy[0];
+        } else {
+          htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
+          token = 0;
+          *op++ = token;
+          memcpy(op, buffercpy, 16);
+          op += 16;
+        }
       } else {   //match
         token = (uint8_t )(1U << 7U);
         *op++ = token;
@@ -174,15 +180,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         memcpy(op, &offset, 2);
         op += 2;
       }
-      printf("\n op-obase: %ld \n", (op - obase));
       if((op - obase) > length) {
         return 0;
       }
     }
-  }
-  printf("\n compressed \n");
-  for (int i = 0; i < (op - obase); i++) {
-    printf("%d, ", obase[i]);
   }
 
   return (int)(op - obase);
@@ -280,6 +281,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   uint32_t ii[2];
   uint32_t padding[2];
   uint32_t ind;
+  uint8_t cell_aux[16];
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       token = *ip++;
@@ -290,6 +292,10 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         uint16_t offset = *((uint16_t*) ip);
         buffercpy = ip - offset;
         ip += 2;
+      } else if (token == (uint8_t)((1U << 7U) | (1U << 6U))) {
+        buffercpy = cell_aux;
+        memset(buffercpy, *ip, 16);
+        ip++;
       } else {
         printf("Invalid token \n");
         return 0;
@@ -307,13 +313,6 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         padding[1] = 4;
       }
 
-      printf("\n pad0: %d, pad1: %d", padding[0], padding[1]);
-
-      printf("\n buffercpy \n");
-      for (int i = 0; i < 16; i++) {
-        printf("%d, ", buffercpy[i]);
-      }
-
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
       for (int i = 0; i < 4; i++) {
         if (i < padding[0]) {
@@ -322,15 +321,11 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         }
         buffercpy += 4;
       }
+
     }
   }
   ind += padding[1];
-  printf("\n decompressed \n");
-  for (int i = 0; i < (blockshape[0] * blockshape[1]); i++) {
-    printf("%d, ", op[i]);
-  }
-  printf("ind %d \n", ind);
-  printf("shape %d \n", (blockshape[0] * blockshape[1]));
+
   if (ind != (blockshape[0] * blockshape[1])) {
     printf("Output size is not compatible with embeded blockshape \n");
     return 0;
