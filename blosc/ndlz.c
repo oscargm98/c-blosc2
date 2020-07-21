@@ -65,6 +65,8 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   int32_t* blockshape = context->blockshape;  // the shape of block
 
   if (length != (blockshape[0] * blockshape[1])) {
+    printf("\n length %d, size %d \n", length, (blockshape[0] * blockshape[1]));
+    printf("Length not equal to shape");
     return -1;
   }
 
@@ -74,6 +76,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint32_t htab[1U << 12U];
   uint32_t hval;
   uint8_t* buffercpy = malloc(16 * sizeof(uint8_t));
+
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -132,6 +135,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       buffercpy -= 4 * padding[0];
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
+        printf("op %u, op_limit %u", op, op_limit);
         return 0;
       }
       const uint8_t* ref;
@@ -181,10 +185,12 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         op += 2;
       }
       if((op - obase) > length) {
+        printf("op-ob %u, len %u", op-obase, length);
         return 0;
       }
     }
   }
+  free(buffercpy);
 
   return (int)(op - obase);
 }
@@ -292,7 +298,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         uint16_t offset = *((uint16_t*) ip);
         buffercpy = ip - offset;
         ip += 2;
-      } else if (token == (uint8_t)((1U << 7U) | (1U << 6U))) {
+      } else if (token == (uint8_t)((1U << 7U) | (1U << 6U))) { // whole cell of same element
         buffercpy = cell_aux;
         memset(buffercpy, *ip, 16);
         ip++;
