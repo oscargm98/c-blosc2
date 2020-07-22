@@ -44,14 +44,14 @@
 #define SHAPE {SHAPE1, SHAPE2}
 #define OSIZE (17 * SIZE / 16) + 9 + 8 + BLOSC_MAX_OVERHEAD
 
-static int test_ndlz(void *data, int isize, int typesize, int ndim, uint32_t *shape) {
+static int test_ndlz(void *data, int nbytes, int typesize, int ndim, uint32_t *shape) {
 
-  int osize = (17 * isize / 16) + 9 + 8 + BLOSC_MAX_OVERHEAD;
-  int dsize = isize;
+  int osize = (17 * nbytes / 16) + 9 + 8 + BLOSC_MAX_OVERHEAD;
+  int dsize = nbytes;
   int csize;
   uint8_t *data2 = (uint8_t *) data;
   uint8_t *data_out = malloc(osize);
-  uint8_t *data_dest = malloc(isize);
+  uint8_t *data_dest = malloc(nbytes);
   blosc2_cparams cparams = BLOSC2_CPARAMS_DEFAULTS;
   blosc2_dparams dparams = BLOSC2_DPARAMS_DEFAULTS;
 
@@ -63,7 +63,7 @@ static int test_ndlz(void *data, int isize, int typesize, int ndim, uint32_t *sh
   cparams.nthreads = 1;
   cparams.ndim = ndim;
   cparams.blockshape = shape;
-  cparams.blocksize = isize / typesize;
+  cparams.blocksize = nbytes;
 
   /* Create a context for decompression */
   dparams.nthreads = 1;
@@ -75,12 +75,12 @@ static int test_ndlz(void *data, int isize, int typesize, int ndim, uint32_t *sh
   dctx = blosc2_create_dctx(dparams);
 
   printf("\n data \n");
-  for (int i = 0; i < isize; i++) {
+  for (int i = 0; i < nbytes; i++) {
     printf("%u, ", data2[i]);
   }
 
   /* Compress with clevel=5 and shuffle active  */
-  csize = blosc2_compress_ctx(cctx, isize, data, data_out, osize);
+  csize = blosc2_compress_ctx(cctx, nbytes, data, data_out, osize);
   if (csize == 0) {
     printf("Buffer is uncompressible.  Giving up.\n");
     return 0;
@@ -90,7 +90,7 @@ static int test_ndlz(void *data, int isize, int typesize, int ndim, uint32_t *sh
     return csize;
   }
 
-  printf("Compression: %d -> %d (%.1fx)\n", isize, csize, (1. * isize) / csize);
+  printf("Compression: %d -> %d (%.1fx)\n", nbytes, csize, (1. * nbytes) / csize);
 
   /* Decompress  */
   dsize = blosc2_decompress_ctx(dctx, data_out, data_dest, dsize);
@@ -105,14 +105,14 @@ static int test_ndlz(void *data, int isize, int typesize, int ndim, uint32_t *sh
   }*/
 
   printf("\n out \n");
-  for (int i = 0; i < isize; i++) {
+  for (int i = 0; i < nbytes; i++) {
     printf("%u, ", data_out[i]);
   }
   printf("\n dest \n");
-  for (int i = 0; i < isize; i++) {
+  for (int i = 0; i < nbytes; i++) {
     printf("%u, ", data_dest[i]);
   }
-  for (int i = 0; i < isize; i++) {
+  for (int i = 0; i < nbytes; i++) {
 
     if (data2[i] != data_dest[i]) {
       printf("i: %d, data %u, dest %u", i, data2[i], data_dest[i]);
@@ -131,23 +131,29 @@ int no_matches() {
   int ndim = 2;
   uint32_t shape[2] = {12, 12};
   int isize = (int)(shape[0] * shape[1]);
-  uint32_t data[isize];
+  uint8_t data[isize];
   for (int i = 0; i < isize; i++) {
     data[i] = i;
   }
 
   /* Run the test. */
-  int result = test_ndlz(data, 4 * isize, 4, ndim, shape);
+  int result = test_ndlz(data, isize, 1, ndim, shape);
   return result;
 }
 
 int no_matches_pad() {
   int ndim = 2;
-  uint32_t shape[2] = {11, 10};
+  uint32_t shape[2] = {11, 13};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   for (int i = 0; i < isize; i++) {
-    data[i] = i;
+    data[i] = 124557 * i;
+    if(i % 2 == 0) {
+      data[i] += 87654321;
+    }
+    if(i % 3 == 0) {
+      data[i] -= 87358362;
+    }
   }
 
   /* Run the test. */
@@ -159,13 +165,13 @@ int all_elem_eq() {
   int ndim = 2;
   uint32_t shape[2] = {32, 32};
   int isize = (int)(shape[0] * shape[1]);
-  uint8_t data[isize];
+  uint32_t data[isize];
   for (int i = 0; i < isize; i++) {
     data[i] = 0;
   }
 
   /* Run the test. */
-  int result = test_ndlz(data, isize, 1, ndim, shape);
+  int result = test_ndlz(data, 4 * isize, 4, ndim, shape);
   return result;
 }
 
@@ -173,13 +179,13 @@ int all_elem_pad() {
   int ndim = 2;
   uint32_t shape[2] = {29, 31};
   int isize = (int)(shape[0] * shape[1]);
-  uint8_t data[isize];
+  uint32_t data[isize];
   for (int i = 0; i < isize; i++) {
     data[i] = 0;
   }
 
   /* Run the test. */
-  int result = test_ndlz(data, isize, 1, ndim, shape);
+  int result = test_ndlz(data, 4 * isize, 4, ndim, shape);
   return result;
 }
 
@@ -206,13 +212,31 @@ int same_cells_pad() {
   int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   memset(data, 0, (shape[0] * shape[1]));
+  for (int i = 0; i < shape[0]; i += 4) {
+    for (int j = 0; j < shape[1]; j += 4) {
+      data[i * shape[1] + j] = 1;
+      data[i * shape[1] + j + 1] = 2;
+    }
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, isize, 1, ndim, shape);
+  return result;
+}
+
+int strange_pad() {
+  int ndim = 2;
+  uint32_t shape[2] = {31, 30};
+  int isize = (int)(shape[0] * shape[1]);
+  uint32_t data[isize];
+  memset(data, 0, (shape[0] * shape[1]));
   for (int i = 0; i < (isize / 4); i++) {
     data[i * 4] = 0;
     data[i * 4 + 1] = 1;
   }
 
   /* Run the test. */
-  int result = test_ndlz(data, isize, 1, ndim, shape);
+  int result = test_ndlz(data, 4 * isize, 4, ndim, shape);
   return result;
 }
 
@@ -324,11 +348,11 @@ int image4() {
 
 int main(void) {
 
-  int /* result = no_matches();
+  int result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
   result = no_matches_pad();
   printf("no_matches_pad: %d obtained \n \n", result);
- */ result = all_elem_eq();
+  result = all_elem_eq();
   printf("all_elem_eq: %d obtained \n \n", result);
   result = all_elem_pad();
   printf("all_elem_pad: %d obtained \n \n", result);
@@ -336,6 +360,8 @@ int main(void) {
   printf("same_cells: %d obtained \n \n", result);
   result = same_cells_pad();
   printf("same_cells_pad: %d obtained \n \n", result);
+  result = strange_pad();
+  printf("strange_pad: %d obtained \n \n", result);
   result = some_matches();
   printf("some_matches: %d obtained \n \n", result);
   result = padding_some();
