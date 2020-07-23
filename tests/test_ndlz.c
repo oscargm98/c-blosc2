@@ -75,7 +75,7 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, uint32_t *s
   dctx = blosc2_create_dctx(dparams);
 
   printf("\n data \n");
-  for (int i = 0; i < nbytes; i++) {
+  for (int i = 0; i < (shape[0] * shape[1]); i++) {
     printf("%u, ", data2[i]);
   }
 
@@ -105,14 +105,14 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, uint32_t *s
   }*/
 
   printf("\n out \n");
-  for (int i = 0; i < nbytes; i++) {
+  for (int i = 0; i < (shape[0] * shape[1]); i++) {
     printf("%u, ", data_out[i]);
   }
   printf("\n dest \n");
-  for (int i = 0; i < nbytes; i++) {
+  for (int i = 0; i < (shape[0] * shape[1]); i++) {
     printf("%u, ", data_dest[i]);
   }
-  for (int i = 0; i < nbytes; i++) {
+  for (int i = 0; i < (shape[0] * shape[1]); i++) {
 
     if (data2[i] != data_dest[i]) {
       printf("i: %d, data %u, dest %u", i, data2[i], data_dest[i]);
@@ -132,6 +132,7 @@ int no_matches() {
   uint32_t shape[2] = {12, 12};
   int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
+  memset(data, 0, isize);
   for (int i = 0; i < isize; i++) {
     data[i] = i;
   }
@@ -146,6 +147,7 @@ int no_matches_pad() {
   uint32_t shape[2] = {11, 13};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
+  memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i++) {
     data[i] = 124557 * i;
     if(i % 2 == 0) {
@@ -166,6 +168,7 @@ int all_elem_eq() {
   uint32_t shape[2] = {32, 32};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
+  memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i++) {
     data[i] = 0;
   }
@@ -180,6 +183,7 @@ int all_elem_pad() {
   uint32_t shape[2] = {29, 31};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
+  memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i++) {
     data[i] = 0;
   }
@@ -194,11 +198,12 @@ int same_cells() {
   uint32_t shape[2] = {32, 32};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
+  memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i += 4) {
     data[i] = 0;
-    data[i + 1] = 1;
+    data[i + 1] = 1111111;
     data[i + 2] = 2;
-    data[i + 3] = 3;
+    data[i + 3] = 1111111;
   }
 
   /* Run the test. */
@@ -210,29 +215,13 @@ int same_cells_pad() {
   int ndim = 2;
   uint32_t shape[2] = {31, 30};
   int isize = (int)(shape[0] * shape[1]);
-  uint8_t data[isize];
-  memset(data, 0, (shape[0] * shape[1]));
-  for (int i = 0; i < shape[0]; i += 4) {
-    for (int j = 0; j < shape[1]; j += 4) {
-      data[i * shape[1] + j] = 1;
-      data[i * shape[1] + j + 1] = 2;
-    }
-  }
-
-  /* Run the test. */
-  int result = test_ndlz(data, isize, 1, ndim, shape);
-  return result;
-}
-
-int strange_pad() {
-  int ndim = 2;
-  uint32_t shape[2] = {31, 30};
-  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
-  memset(data, 0, (shape[0] * shape[1]));
-  for (int i = 0; i < (isize / 4); i++) {
-    data[i * 4] = 0;
-    data[i * 4 + 1] = 1;
+  memset(data, 0, isize * 4);
+  for (int i = 0; i < shape[0]; i++) {
+    for (int j = 0; j < shape[1]; j += 4) {
+      data[i * shape[1] + j] = 11111111;
+      data[i * shape[1] + j + 1] = 222222222;
+    }
   }
 
   /* Run the test. */
@@ -245,6 +234,7 @@ int some_matches() {
   uint32_t shape[2] = {32, 32};
   int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
+  memset(data, 0, isize);
   for (int i = 0; i < isize; i++) {
     data[i] = i;
   }
@@ -262,6 +252,7 @@ int padding_some() {
   uint32_t shape[2] = {15, 14};
   int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
+  memset(data, 0, isize);
   for (int i = 0; i < 2 * isize / 3; i++) {
     data[i] = 0;
   }
@@ -274,6 +265,21 @@ int padding_some() {
   return result;
 }
 
+int pad_some_32() {
+  int ndim = 2;
+  uint32_t shape[2] = {15, 14};
+  int isize = (int)(shape[0] * shape[1]);
+  uint32_t data[isize];
+  memset(data, 0, 4 * isize);
+  for (int i = 0; i < isize; i++) {
+    data[i] = 10000 * i + i;
+  }
+
+  /* Run the test. */
+  int result = test_ndlz(data, 4 * isize, 4, ndim, shape);
+  return result;
+}
+
 int image1() {
   int ndim = 2;
   uint32_t shape[2] = {300, 450};
@@ -282,9 +288,6 @@ int image1() {
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res.bin", "rb");
   fread(data, sizeof(data), 1, f);
-  for (int i = 0; i < 15; i++) {
-    printf("%u, ", data[i]);
-  }
   fclose(f);
 
   /* Run the test. */
@@ -300,9 +303,6 @@ int image2() {
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res2.bin", "rb");
   fread(data, sizeof(data), 1, f);
-  for (int i = 0; i < 15; i++) {
-    printf("%u, ", data[i]);
-  }
   fclose(f);
 
   /* Run the test. */
@@ -318,9 +318,6 @@ int image3() {
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res3.bin", "rb");
   fread(data, sizeof(data), 1, f);
-  for (int i = 0; i < 15; i++) {
-    printf("%u, ", data[i]);
-  }
   fclose(f);
 
   /* Run the test. */
@@ -336,9 +333,6 @@ int image4() {
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res4.bin", "rb");
   fread(data, sizeof(data), 1, f);
-  for (int i = 0; i < 15; i++) {
-    printf("%u, ", data[i]);
-  }
   fclose(f);
 
   /* Run the test. */
@@ -360,15 +354,15 @@ int main(void) {
   printf("same_cells: %d obtained \n \n", result);
   result = same_cells_pad();
   printf("same_cells_pad: %d obtained \n \n", result);
-  result = strange_pad();
-  printf("strange_pad: %d obtained \n \n", result);
   result = some_matches();
   printf("some_matches: %d obtained \n \n", result);
   result = padding_some();
   printf("pad_some: %d obtained \n \n", result);
+  result = pad_some_32();
+  printf("pad_some_32: %d obtained \n \n", result);
 /*
   result = image1();
-  printf("image1 with NO padding: %d obtained \n \n", result);
+  printf("image1 with padding: %d obtained \n \n", result);
   result = image2();
   printf("image2 with NO padding: %d obtained \n \n", result);
   result = image3();
@@ -376,4 +370,4 @@ int main(void) {
   result = image4();
   printf("image4 with NO padding: %d obtained \n \n", result);
 */
-}
+ }
