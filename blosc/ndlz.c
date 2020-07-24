@@ -64,6 +64,8 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   int ndim = context->ndim;  // the number of dimensions of the block
   int32_t* blockshape = context->blockshape;  // the shape of block
 
+  printf("\n length %d, size %d \n", length, (blockshape[0] * blockshape[1]));
+
   if (length != (blockshape[0] * blockshape[1])) {
     printf("\n length %d, size %d \n", length, (blockshape[0] * blockshape[1]));
     printf("Length not equal to shape");
@@ -135,7 +137,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       buffercpy -= 4 * padding[0];
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
-        printf("op %u, op_limit %u", op, op_limit);
+        printf("\n op %p, op_limit %p \n", op, op_limit);
         return 0;
       }
       const uint8_t* ref;
@@ -151,7 +153,18 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       if (htab[hval] == 0) {
         distance = 0;
       } else {
-        distance = (int32_t) (anchor - ref);
+        bool same = true;
+        uint8_t *buffer2 = obase + htab[hval];
+        for(int i = 0; i < 16; i++){
+          if(buffercpy[i] != buffer2[i]) {
+            same = false;
+          }
+        }
+        if (same) {
+          distance = (int32_t) (anchor - ref);
+        } else {
+          distance = 0;
+        }
       }
 
       uint8_t token;
