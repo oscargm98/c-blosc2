@@ -64,6 +64,9 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, int32_t *bl
   cparams.ndim = ndim;
   cparams.blockshape = blockshape;
   cparams.blocksize = blockshape[0] * blockshape[1] * typesize;
+  if (cparams.blocksize < BLOSC_MIN_BUFFERSIZE) {
+    printf("\n Blocksize is letter than min \n");
+  }
 
   /* Create a context for decompression */
   dparams.nthreads = 1;
@@ -127,8 +130,9 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, int32_t *bl
 
 int no_matches() {
   int ndim = 2;
-  uint32_t blockshape[2] = {12, 12};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {12, 12};
+  int32_t blockshape[2] = {12, 12};
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   memset(data, 0, isize);
   for (int i = 0; i < isize; i++) {
@@ -142,8 +146,9 @@ int no_matches() {
 
 int no_matches_pad() {
   int ndim = 2;
-  uint32_t blockshape[2] = {11, 13};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {11, 13};
+  int32_t blockshape[2] = {11, 13};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i++) {
@@ -163,8 +168,9 @@ int no_matches_pad() {
 
 int all_elem_eq() {
   int ndim = 2;
-  uint32_t blockshape[2] = {32, 32};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {64, 64};
+  int32_t blockshape[2] = {32, 32};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i++) {
@@ -178,8 +184,9 @@ int all_elem_eq() {
 
 int all_elem_pad() {
   int ndim = 2;
-  uint32_t blockshape[2] = {29, 31};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {29, 31};
+  int32_t blockshape[2] = {29, 31};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i++) {
@@ -193,8 +200,9 @@ int all_elem_pad() {
 
 int same_cells() {
   int ndim = 2;
-  uint32_t blockshape[2] = {32, 32};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {32, 32};
+  int32_t blockshape[2] = {32, 32};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
   for (int i = 0; i < isize; i += 4) {
@@ -211,14 +219,15 @@ int same_cells() {
 
 int same_cells_pad() {
   int ndim = 2;
-  uint32_t blockshape[2] = {31, 30};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {31, 30};
+  int32_t blockshape[2] = {31, 30};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
-  for (int i = 0; i < blockshape[0]; i++) {
-    for (int j = 0; j < blockshape[1]; j += 4) {
-      data[i * blockshape[1] + j] = 11111111;
-      data[i * blockshape[1] + j + 1] = 222222222;
+  for (int i = 0; i < shape[0]; i++) {
+    for (int j = 0; j < shape[1]; j += 4) {
+      data[i * shape[1] + j] = 11111111;
+      data[i * shape[1] + j + 1] = 222222222;
     }
   }
 
@@ -229,8 +238,9 @@ int same_cells_pad() {
 
 int some_matches() {
   int ndim = 2;
-  uint32_t blockshape[2] = {256, 256};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {256, 256};
+  int32_t blockshape[2] = {256, 256};
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   //memset(data, 0, isize);
   for (int i = 0; i < isize; i++) {
@@ -247,8 +257,9 @@ int some_matches() {
 
 int padding_some() {
   int ndim = 2;
-  uint32_t blockshape[2] = {15, 14};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {15, 14};
+  int32_t blockshape[2] = {15, 14};
+  int isize = (int)(shape[0] * shape[1]);
   uint8_t data[isize];
   memset(data, 0, isize);
   for (int i = 0; i < 2 * isize / 3; i++) {
@@ -265,8 +276,9 @@ int padding_some() {
 
 int pad_some_32() {
   int ndim = 2;
-  uint32_t blockshape[2] = {15, 14};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {15, 14};
+  int32_t blockshape[2] = {15, 14};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, 4 * isize);
   for (int i = 0; i < isize; i++) {
@@ -280,8 +292,9 @@ int pad_some_32() {
 
 int image1() {
   int ndim = 2;
-  uint32_t blockshape[2] = {300, 450};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {300, 450};
+  int32_t blockshape[2] = {300, 450};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res.bin", "rb");
@@ -295,8 +308,9 @@ int image1() {
 
 int image2() {
   int ndim = 2;
-  uint32_t blockshape[2] = {800, 1200};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {800, 1200};
+  int32_t blockshape[2] = {800, 1200};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t *data = malloc(isize * 4);
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res2.bin", "rb");
@@ -310,8 +324,9 @@ int image2() {
 
 int image3() {
   int ndim = 2;
-  uint32_t blockshape[2] = {256, 256};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {256, 256};
+  int32_t blockshape[2] = {256, 256};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res3.bin", "rb");
@@ -325,8 +340,9 @@ int image3() {
 
 int image4() {
   int ndim = 2;
-  uint32_t blockshape[2] = {64, 64};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {64, 64};
+  int32_t blockshape[2] = {64, 64};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res4.bin", "rb");
@@ -340,8 +356,9 @@ int image4() {
 
 int image5() {
   int ndim = 2;
-  uint32_t blockshape[2] = {641, 1140};
-  int isize = (int)(blockshape[0] * blockshape[1]);
+  int32_t shape[2] = {641, 1140};
+  int32_t blockshape[2] = {641, 1140};
+  int isize = (int)(shape[0] * shape[1]);
   uint32_t *data = malloc(isize * 4);
 
   FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res5.bin", "rb");
@@ -356,7 +373,7 @@ int image5() {
 int main(void) {
 
   int result;
-  /*result = no_matches();
+  result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
   result = no_matches_pad();
   printf("no_matches_pad: %d obtained \n \n", result);
@@ -383,7 +400,7 @@ int main(void) {
   printf("image3 with NO padding: %d obtained \n \n", result);
   result = image4();
   printf("image4 with NO padding: %d obtained \n \n", result);
-*/
   result = image5();
   printf("image5 with padding: %d obtained \n \n", result);
+
  }

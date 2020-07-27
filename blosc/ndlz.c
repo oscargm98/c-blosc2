@@ -64,7 +64,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   int ndim = context->ndim;  // the number of dimensions of the block
   int32_t* blockshape = context->blockshape;  // the shape of block
 
-  printf("\n length %d, size %d \n", length, (blockshape[0] * blockshape[1]));
+  if(length == context->leftover) {
+    printf("\n Leftover block is not supported\n");
+    return 0;
+  }
 
   if (length != (blockshape[0] * blockshape[1])) {
     printf("\n length %d, size %d \n", length, (blockshape[0] * blockshape[1]));
@@ -168,28 +171,25 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       }
 
       uint8_t token;
-      if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no match
-        // calcular si son todos iguales
-        bool alleq = true;
-        for (int i = 1; i < 16; i++) {
-          if (buffercpy[i] != buffercpy[0]) {
-            alleq = false;
-            break;
-          }
+      bool alleq = true;
+      for (int i = 1; i < 16; i++) {
+        if (buffercpy[i] != buffercpy[0]) {
+          alleq = false;
+          break;
         }
+      }
+      if (alleq) {
+        token = (uint8_t)((1U << 7U) | (1U << 6U));
+        *op++ = token;
+        *op++ = buffercpy[0];
 
-        if (alleq) {
-          // nuevo token
-          token = (uint8_t)((1U << 7U) | (1U << 6U));
-          *op++ = token;
-          *op++ = buffercpy[0];
-        } else {
+      } else if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no match
           htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
           token = 0;
           *op++ = token;
           memcpy(op, buffercpy, 16);
           op += 16;
-        }
+
       } else {   //match
         token = (uint8_t )(1U << 7U);
         *op++ = token;
@@ -197,6 +197,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         memcpy(op, &offset, 2);
         op += 2;
       }
+
+      // rows
+
+
       if((op - obase) > length) {
         printf("op-ob %u, len %u", op-obase, length);
         return 0;
