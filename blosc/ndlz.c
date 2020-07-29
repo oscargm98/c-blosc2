@@ -81,7 +81,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint32_t htab[1U << 12U];
   uint32_t hval;
   uint8_t* buffercpy = malloc(16 * sizeof(uint8_t));
-
+  uint32_t hrcont[1U << 12U];
+  uint32_t hralt[1U << 12U];
+  uint32_t hrext[1U << 12U];
+  uint8_t* bufrow;
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -179,26 +182,97 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         }
       }
       if (alleq) {
-        token = (uint8_t)((1U << 7U) | (1U << 6U));
+        token = (uint8_t) (1U << 6U);
         *op++ = token;
         *op++ = buffercpy[0];
 
-      } else if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no match
+      } else if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no cell match
+        // rows
+        bool literal = true;
+        for(int i = 0; i < 3; i++) {
+          for (int j = i + 1; j < 4; j++) {
+            memcpy(bufrow, &buffercpy[i * 4], 4);
+            memcpy(&bufrow[3], &buffercpy[j * 4], 4);
+            hval = XXH32(bufrow, 8, 1);        // calculate couple hash
+            hval >>= 32U - 12U;
+            /* calculate distance to the match */
+            bool same = true;
+            if (hrcont[hval] != 0) {
+              uint8_t *buffer2 = obase + hrcont[hval];
+              for(int i = 0; i < 8; i++){
+                if(bufrow[i] != buffer2[i]) {
+                  same = false;
+                }
+              }
+            }
+            else if (hralt[hval] != 0) {
+              uint8_t *buffer2 = obase + hralt[hval];
+              for(int i = 0; i < 4; i++){
+                if(bufrow[i] != buffer2[i]) {
+                  same = false;
+                }
+              }
+              for(int i = 8; i < 12; i++){
+                if(bufrow[i] != buffer2[i]) {
+                  same = false;
+                }
+              }
+            }
+            else if (hrext[hval] != 0) {
+              uint8_t *buffer2 = obase + hralt[hval];
+              for(int i = 0; i < 4; i++){
+                if(bufrow[i] != buffer2[i]) {
+                  same = false;
+                }
+              }
+              for(int i = 12; i < 16; i++){
+                if(bufrow[i] != buffer2[i]) {
+                  same = false;
+                }
+              }
+            } else {
+              same = false;
+            }
+            if (same) {
+              distance = (int32_t) (anchor + i * 4 - ref);
+            } else {
+              distance = 0;
+            }
+            if ((distance != 0) && (distance < MAX_DISTANCE)) {
+              literal = false;
+              if (i == 2) {
+                token = (uint8_t )(1U << 7U);
+              } else {
+                token = (uint8_t )((1U << 7U) | (iU << 5U) | (j << 3U));
+              }
+
+            }
+
+
+
+          }
+        }
+
+
+
+
+
+
+        if (literal) {
           htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
           token = 0;
           *op++ = token;
           memcpy(op, buffercpy, 16);
           op += 16;
+        }
 
-      } else {   //match
-        token = (uint8_t )(1U << 7U);
+      } else {   // cell match
+        token = (uint8_t )((1U << 7U) | (1U << 6U));
         *op++ = token;
         uint16_t offset = (uint16_t) (anchor - obase - htab[hval]);
         memcpy(op, &offset, 2);
         op += 2;
       }
-
-      // rows
 
 
       if((op - obase) > length) {
