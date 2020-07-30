@@ -373,6 +373,7 @@ int image5() {
 int main(void) {
 
   int result;
+  /*
   result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
   result = no_matches_pad();
@@ -402,5 +403,6 @@ int main(void) {
   printf("image4 with NO padding: %d obtained \n \n", result);
   result = image5();
   printf("image5 with padding: %d obtained \n \n", result);
+*/
 
- }
+}
