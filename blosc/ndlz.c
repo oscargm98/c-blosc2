@@ -80,11 +80,11 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint8_t* op_limit;
   uint32_t htab[1U << 12U];
   uint32_t hval;
-  uint8_t* buffercpy = malloc(16 * sizeof(uint8_t));
-  uint32_t hrcont[1U << 12U];
-  uint32_t hralt[1U << 12U];
-  uint32_t hrext[1U << 12U];
-  uint8_t* bufrow;
+  uint8_t* bufcell = malloc(16 * sizeof(uint8_t));
+  uint32_t hrcoup[1U << 12U];
+  uint32_t hrthr[1U << 12U];
+  uint8_t* bufrcoup;
+  uint8_t* bufrthr;
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -123,7 +123,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   for (ii[0] = 0; ii[0] < i_stop[0]; ++ii[0]) {
     for (ii[1] = 0; ii[1] < i_stop[1]; ++ii[1]) {      // for each cell
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
-      memset(buffercpy, 0, 16);
+      memset(bufcell, 0, 16);
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
       if (ii[0] == i_stop[0] - 1) {
         padding[0] = (blockshape[0] % 4 == 0) ? 4 : blockshape[0] % 4;
@@ -137,10 +137,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       }
       for (int i = 0; i < padding[0]; i++) {
         int ind = orig + i * blockshape[1];
-        memcpy(buffercpy, &ip[ind], padding[1]);
-        buffercpy += 4;
+        memcpy(bufcell, &ip[ind], padding[1]);
+        bufcell += 4;
       }
-      buffercpy -= 4 * padding[0];
+      bufcell -= 4 * padding[0];
 
       if (NDLZ_UNEXPECT_CONDITIONAL(op + 16 > op_limit)) {
         printf("\n op %p, op_limit %p \n", op, op_limit);
@@ -151,7 +151,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       uint8_t* anchor = op;    /* comparison starting-point */
 
       /* find potential match */
-      hval = XXH32(buffercpy, 16, 1);        // calculate cell hash
+      hval = XXH32(bufcell, 16, 1);        // calculate cell hash
       hval >>= 32U - 12U;
       ref = obase + htab[hval];
 
@@ -162,7 +162,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         bool same = true;
         uint8_t *buffer2 = obase + htab[hval];
         for(int i = 0; i < 16; i++){
-          if(buffercpy[i] != buffer2[i]) {
+          if(bufcell[i] != buffer2[i]) {
             same = false;
           }
         }
@@ -176,7 +176,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       uint8_t token;
       bool alleq = true;
       for (int i = 1; i < 16; i++) {
-        if (buffercpy[i] != buffercpy[0]) {
+        if (bufcell[i] != bufcell[0]) {
           alleq = false;
           break;
         }
@@ -184,58 +184,34 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       if (alleq) {
         token = (uint8_t) (1U << 6U);
         *op++ = token;
-        *op++ = buffercpy[0];
+        *op++ = bufcell[0];
 
       } else if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no cell match
-        // rows
         bool literal = true;
+        // rows couples
         for(int i = 0; i < 3; i++) {
-          memcpy(bufrow, &buffercpy[i * 4], 4);
+          memcpy(bufrcoup, &bufcell[i * 4], 4);
           for (int j = i + 1; j < 4; j++) {
-            memcpy(&bufrow[4], &buffercpy[j * 4], 4);
-            hval = XXH32(bufrow, 8, 1);        // calculate couple hash
+            memcpy(&bufrcoup[4], &bufcell[j * 4], 4);
+            hval = XXH32(bufrcoup, 8, 1);        // calculate couple hash
             hval >>= 32U - 12U;
+            ref = obase + hrcoup[hval];
             /* calculate distance to the match */
             bool same = true;
             uint16_t offset;
-            if (hrcont[hval] != 0) {
-              uint8_t *buffer2 = obase + hrcont[hval];
-              for(int i = 0; i < 8; i++){
-                if(bufrow[i] != buffer2[i]) {
+            if (hrcoup[hval] != 0) {
+              uint8_t *buffer2 = obase + hrcoup[hval];
+              for(int k = 0; k < 8; k++){
+                if(bufrcoup[k] != buffer2[k]) {
                   same = false;
                 }
               }
-              offset = (uint16_t) (anchor - obase - hrcont[hval]);
-            }
-            else if (hralt[hval] != 0) {
-              uint8_t *buffer2 = obase + hralt[hval];
-              for(int i = 0; i < 4; i++){
-                if(bufrow[i] != buffer2[i]) {
-                  same = false;
-                }
-              }
-              for(int i = 8; i < 12; i++){
-                if(bufrow[i] != buffer2[i]) {
-                  same = false;
-                }
-              }
-              offset = (uint16_t) (anchor - obase - hralt[hval]);
-            }
-            else if (hrext[hval] != 0) {
-              uint8_t *buffer2 = obase + hralt[hval];
-              for(int i = 0; i < 4; i++){
-                if(bufrow[i] != buffer2[i]) {
-                  same = false;
-                }
-              }
-              for(int i = 12; i < 16; i++){
-                if(bufrow[i] != buffer2[i]) {
-                  same = false;
-                }
-              }
-              offset = (uint16_t) (anchor - obase - hrext[hval]);
+              offset = (uint16_t) (anchor - obase - hrcoup[hval]);
             } else {
               same = false;
+              if (j - i == 1) {
+                hrcoup[hval] = (uint32_t) (anchor + i * 4 - obase);     /* update hash table */
+              }
             }
             if (same) {
               distance = (int32_t) (anchor + i * 4 - ref);
@@ -254,29 +230,19 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
               op += 2;
               for (int k = 0; k < 4; k++) {
                 if ((k != i) && (k != j)) {
-                  memcpy(op, &buffercpy[4 * k], 4);
+                  memcpy(op, &bufcell[4 * k], 4);
                   op += 4;
                 }
               }
-
-
-
             }
-
-
           }
         }
-
-
-
-
-
 
         if (literal) {
           htab[hval] = (uint32_t) (anchor - obase);     /* update hash table */
           token = 0;
           *op++ = token;
-          memcpy(op, buffercpy, 16);
+          memcpy(op, bufcell, 16);
           op += 16;
         }
 
@@ -295,7 +261,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       }
     }
   }
-  free(buffercpy);
+  free(bufcell);
 
   return (int)(op - obase);
 }
