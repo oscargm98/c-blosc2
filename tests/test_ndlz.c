@@ -185,7 +185,7 @@ int all_elem_eq() {
 int all_elem_pad() {
   int ndim = 2;
   int32_t shape[2] = {29, 31};
-  int32_t blockshape[2] = {29, 31};
+  int32_t blockshape[2] = {22, 24};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
@@ -201,7 +201,7 @@ int all_elem_pad() {
 int same_cells() {
   int ndim = 2;
   int32_t shape[2] = {32, 32};
-  int32_t blockshape[2] = {32, 32};
+  int32_t blockshape[2] = {25, 23};
   int isize = (int)(shape[0] * shape[1]);
   uint32_t data[isize];
   memset(data, 0, isize * 4);
@@ -370,16 +370,34 @@ int image5() {
   return result;
 }
 
+int image6() {
+  int ndim = 2;
+  int32_t shape[2] = {256, 256};
+  int32_t blockshape[2] = {256, 256};
+  int isize = (int)(shape[0] * shape[1]);
+  uint32_t *data = malloc(isize * 4);
+
+  FILE *f = fopen("/mnt/c/Users/sosca/CLionProjects/c-blosc2/tests/res6.bin", "rb");
+  fread(data, sizeof(data), 1, f);
+  fclose(f);
+
+  /* Run the test. */
+  int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  return result;
+}
+
+
 int main(void) {
 
   int result;
-  /*
+/*
   result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
   result = no_matches_pad();
   printf("no_matches_pad: %d obtained \n \n", result);
   result = all_elem_eq();
   printf("all_elem_eq: %d obtained \n \n", result);
+  */
   result = all_elem_pad();
   printf("all_elem_pad: %d obtained \n \n", result);
   result = same_cells();
@@ -403,6 +421,7 @@ int main(void) {
   printf("image4 with NO padding: %d obtained \n \n", result);
   result = image5();
   printf("image5 with padding: %d obtained \n \n", result);
-*/
+  result = image6();
+  printf("image6 with padding: %d obtained \n \n", result);
 
 }

@@ -65,7 +65,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   int32_t* blockshape = context->blockshape;  // the shape of block
 
   if(length == context->leftover) {
-    printf("\n Leftover block is not supported\n");
+    printf("\n Leftover block is not supported %d - %d \n", length, context->leftover);
     return 0;
   }
 
@@ -83,8 +83,8 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint8_t* bufcell = malloc(16 * sizeof(uint8_t));
   uint32_t hrcoup[1U << 12U];
   uint32_t hrthr[1U << 12U];
-  uint8_t* bufrcoup;
-  uint8_t* bufrthr;
+  uint8_t* bufrcoup = malloc(8 * sizeof(uint8_t));
+  uint8_t* bufrthr = malloc(12 * sizeof(uint8_t));
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -200,7 +200,8 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
             bool same = true;
             uint16_t offset;
             if (hrcoup[hval] != 0) {
-              uint8_t *buffer2 = obase + hrcoup[hval];
+              uint8_t *buffer2 = malloc(16 * sizeof(uint8_t));
+              *buffer2 = obase + hrcoup[hval];
               for(int k = 0; k < 8; k++){
                 if(bufrcoup[k] != buffer2[k]) {
                   same = false;
