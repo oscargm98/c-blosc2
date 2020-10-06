@@ -101,20 +101,21 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, int32_t *bl
     printf("Decompression error.  Error code: %d\n", dsize);
     return dsize;
   }
-
-  /* printf("data dest: \n");
-  for (int i = 0; i < isize; i++) {
-    printf("%u, ", data_dest[i]);
+/*
+   printf("data2: \n");
+  for (int i = 0; i < nbytes; i++) {
+    printf("%u, ", data2[i]);
   }
 
   printf("\n out \n");
-  for (int i = 0; i < csize; i++) {
+  for (int i = 0; i < osize; i++) {
     printf("%u, ", data_out[i]);
   }
   printf("\n dest \n");
   for (int i = 0; i < nbytes; i++) {
     printf("%u, ", data_dest[i]);
-  }*/
+  }
+  */
   for (int i = 0; i < nbytes; i++) {
 
     if (data2[i] != data_dest[i]) {
@@ -390,14 +391,13 @@ int image6() {
 int main(void) {
 
   int result;
-/*
+
   result = no_matches();
   printf("no_matches: %d obtained \n \n", result);
   result = no_matches_pad();
   printf("no_matches_pad: %d obtained \n \n", result);
   result = all_elem_eq();
   printf("all_elem_eq: %d obtained \n \n", result);
-  */
   result = all_elem_pad();
   printf("all_elem_pad: %d obtained \n \n", result);
   result = same_cells();
