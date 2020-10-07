@@ -368,6 +368,7 @@ int image5() {
 
   /* Run the test. */
   int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  free(data);
   return result;
 }
 
@@ -384,6 +385,7 @@ int image6() {
 
   /* Run the test. */
   int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  free(data);
   return result;
 }
 

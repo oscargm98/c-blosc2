@@ -85,6 +85,8 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint32_t hrthr[1U << 12U];
   uint8_t* bufrcoup = malloc(8 * sizeof(uint8_t));
   uint8_t* bufrthr = malloc(12 * sizeof(uint8_t));
+  uint8_t *buffer2 = malloc(16 * sizeof(uint8_t));
+
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -170,7 +172,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
           distance = 0;
         } else {
           bool same = true;
-          uint8_t *buffer2 = obase + htab[hval];
+          *buffer2 = obase + htab[hval];
           for(int i = 0; i < 16; i++){
             if(bufcell[i] != buffer2[i]) {
               same = false;
@@ -190,59 +192,116 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
             break;
           }
         }
-        if (alleq) {
+        if (alleq) {                              // all elements of the cell equal
           token = (uint8_t) (1U << 6U);
           *op++ = token;
           *op++ = bufcell[0];
 
         } else if (distance == 0 || (distance >= MAX_DISTANCE)) {   // no cell match
           bool literal = true;
-          // rows couples
-          for(int i = 0; i < 3; i++) {
-            memcpy(bufrcoup, &bufcell[i * 4], 4);
-            for (int j = i + 1; j < 4; j++) {
-              memcpy(&bufrcoup[4], &bufcell[j * 4], 4);
-              hval = XXH32(bufrcoup, 8, 1);        // calculate couple hash
-              hval >>= 32U - 12U;
-              ref = obase + hrcoup[hval];
-              /* calculate distance to the match */
-              bool same = true;
-              uint16_t offset;
-              if (hrcoup[hval] != 0) {
-                uint8_t *buffer2 = malloc(16 * sizeof(uint8_t));
-                *buffer2 = obase + hrcoup[hval];
-                for(int k = 0; k < 8; k++){
-                  if(bufrcoup[k] != buffer2[k]) {
-                    same = false;
+
+          // three rows
+          for(int i = 0; i < 2; i++) {
+            memcpy(bufrthr, &bufcell[i * 4], 4);
+            for (int j = i + 1; j < 3; j++) {
+              memcpy(&bufrthr[4], &bufcell[j * 4], 4);
+              for (int k = j + 1; k < 4; k++) {
+                memcpy(&bufrthr[8], &bufcell[k * 4], 4);
+                hval = XXH32(bufrthr, 12, 1);        // calculate trio hash
+                hval >>= 32U - 12U;
+                ref = obase + hrthr[hval];
+                /* calculate distance to the match */
+                bool same = true;
+                uint16_t offset;
+                if (hrthr[hval] != 0) {
+                  memset(buffer2, 0, 16);
+                  *buffer2 = obase + hrthr[hval];
+                  for (int l = 0; l < 12; l++) {
+                    if (bufrthr[l] != buffer2[l]) {
+                      same = false;
+                    }
+                  }
+                  offset = (uint16_t) (anchor - obase - hrthr[hval]);
+                } else {
+                  same = false;
+                  if ((j - i == 1) && (k - j == 1)) {
+                    hrthr[hval] = (uint32_t) (anchor + i * 4 - obase);     /* update hash table */
                   }
                 }
-                offset = (uint16_t) (anchor - obase - hrcoup[hval]);
-                free(buffer2);
-              } else {
-                same = false;
-                if (j - i == 1) {
-                  hrcoup[hval] = (uint32_t) (anchor + i * 4 - obase);     /* update hash table */
-                }
-              }
-              if (same) {
-                distance = (int32_t) (anchor + i * 4 - ref);
-              } else {
-                distance = 0;
-              }
-              if ((distance != 0) && (distance < MAX_DISTANCE)) {
-                literal = false;
-                if (i == 2) {
-                  token = (uint8_t )(1U << 7U);
+                if (same) {
+                  distance = (int32_t) (anchor + i * 4 - ref);
                 } else {
-                  token = (uint8_t )((1U << 7U) | (i << 5U) | (j << 3U));
+                  distance = 0;
                 }
-                *op++ = token;
-                memcpy(op, &offset, 2);
-                op += 2;
-                for (int k = 0; k < 4; k++) {
-                  if ((k != i) && (k != j)) {
-                    memcpy(op, &bufcell[4 * k], 4);
-                    op += 4;
+                if ((distance != 0) && (distance < MAX_DISTANCE)) {
+                  literal = false;
+                  if (i == 1) {
+                    token = (uint8_t) (7U << 5U);
+                  } else {
+                    token = (uint8_t) ((7U << 5U) | ((j + k - 2) << 3U));
+                  }
+                  *op++ = token;
+                  memcpy(op, &offset, 2);
+                  op += 2;
+                  for (int l = 0; l < 4; l++) {
+                    if ((l != i) && (l != j) && (l != k)) {
+                      memcpy(op, &bufcell[4 * l], 4);
+                      op += 4;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          if (literal) {
+            // rows couples
+            for(int i = 0; i < 3; i++) {
+              memcpy(bufrcoup, &bufcell[i * 4], 4);
+              for (int j = i + 1; j < 4; j++) {
+                memcpy(&bufrcoup[4], &bufcell[j * 4], 4);
+                hval = XXH32(bufrcoup, 8, 1);        // calculate couple hash
+                hval >>= 32U - 12U;
+                ref = obase + hrcoup[hval];
+                /* calculate distance to the match */
+                bool same = true;
+                uint16_t offset;
+                if (hrcoup[hval] != 0) {
+                  *buffer2 = obase + hrcoup[hval];
+                  for(int k = 0; k < 8; k++){
+                    if(bufrcoup[k] != buffer2[k]) {
+                      same = false;
+                    }
+                  }
+                  offset = (uint16_t) (anchor - obase - hrcoup[hval]);
+                  free(buffer2);
+                } else {
+                  same = false;
+                  if (j - i == 1) {
+                    hrcoup[hval] = (uint32_t) (anchor + i * 4 - obase);     /* update hash table */
+                  }
+                }
+                if (same) {
+                  distance = (int32_t) (anchor + i * 4 - ref);
+                } else {
+                  distance = 0;
+                }
+                if ((distance != 0) && (distance < MAX_DISTANCE)) {
+                  literal = false;
+                  if (i == 2) {
+                    token = (uint8_t )(1U << 7U);
+                  } else {
+                    token = (uint8_t )((1U << 7U) | (i << 5U) | (j << 3U));
+                  }
+                  *op++ = token;
+                  memcpy(op, &offset, 2);
+                  op += 2;
+                  for (int k = 0; k < 4; k++) {
+                    if ((k != i) && (k != j)) {
+                      memcpy(op, &bufcell[4 * k], 4);
+                      op += 4;
+                    }
                   }
                 }
               }
@@ -274,6 +333,9 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
     }
   }
   free(bufcell);
+  free(bufrcoup);
+  free(bufrthr);
+  free(buffer2);
 
   return (int)(op - obase);
 }
@@ -398,7 +460,41 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         buffercpy = cell_aux;
         memset(buffercpy, *ip, 16);
         ip++;
-      } else if ((token >= 128) && (token <= 184)){ // rows match
+      } else if ((token >= 224) && (token <= 255)) { // three rows match
+        buffercpy = malloc(16);
+        uint16_t offset = *((uint16_t*) ip);
+        ip += 2;
+        int i, j, k;
+        if ((token >> 3U) == 28) {
+          i = 1;
+          j = 2;
+          k = 3;
+        } else {
+          i = 0;
+          if ((token >> 3U) < 30) {
+            j = 1;
+            k = 2;
+          } else {
+            k = 3;
+            if ((token >> 3U) == 30) {
+              j = 1;
+            } else {
+              j = 2;
+            }
+          }
+        }
+        memcpy(&buffercpy[i * 4], ip - offset, 4);
+        memcpy(&buffercpy[j * 4], ip - offset + 4, 4);
+        memcpy(&buffercpy[k * 4], ip - offset + 8, 4);
+        for (int l = 0; l < 3; l++) {
+          if ((l != i) && (l != j) && (l != k)) {
+            memcpy(&buffercpy[l * 4], ip, 4);
+            ip += 4;
+            break;
+          }
+        }
+
+      } else if ((token >= 128) && (token <= 191)){ // rows couples match
         buffercpy = malloc(16);
         uint16_t offset = *((uint16_t*) ip);
         ip += 2;
@@ -412,8 +508,12 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
         }
         memcpy(&buffercpy[i * 4], ip - offset, 4);
         memcpy(&buffercpy[j * 4], ip - offset + 4, 4);
-
-
+        for (int k = 0; k < 4; k++) {
+          if ((k != i) && (k != j)) {
+            memcpy(&buffercpy[k * 4], ip, 4);
+            ip += 4;
+          }
+        }
       } else {
         printf("Invalid token \n");
         return 0;
