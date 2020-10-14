@@ -101,7 +101,7 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, int32_t *bl
     printf("Decompression error.  Error code: %d\n", dsize);
     return dsize;
   }
-/*
+
    printf("data2: \n");
   for (int i = 0; i < nbytes; i++) {
     printf("%u, ", data2[i]);
@@ -115,7 +115,7 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, int32_t *bl
   for (int i = 0; i < nbytes; i++) {
     printf("%u, ", data_dest[i]);
   }
-  */
+
   for (int i = 0; i < nbytes; i++) {
 
     if (data2[i] != data_dest[i]) {
@@ -131,14 +131,13 @@ static int test_ndlz(void *data, int nbytes, int typesize, int ndim, int32_t *bl
 
 int no_matches() {
   int ndim = 2;
-  int32_t shape[2] = {12, 12};
+  int32_t shape[2] = {24, 36};
   int32_t blockshape[2] = {12, 12};
-  int isize = (int)(shape[0] * shape[1]);
-  uint8_t data[isize];
-  memset(data, 0, isize);
-  for (int i = 0; i < isize; i++) {
-    data[i] = i;
-  }
+  blosc2_frame *frame1 = blosc2_frame_from_file("/mnt/c/Users/sosca/CLionProjects/c-blosc2/examples/nomatch.cat");
+  blosc2_schunk *sc1 = blosc2_schunk_from_frame(frame1, false);
+  int isize = (int)(sc1->chunksize);
+  uint8_t *data = malloc(isize);
+  int err = blosc2_schunk_decompress_chunk(sc1, 0, data, isize);
 
   /* Run the test. */
   int result = test_ndlz(data, isize, 1, ndim, blockshape);
@@ -147,23 +146,16 @@ int no_matches() {
 
 int no_matches_pad() {
   int ndim = 2;
-  int32_t shape[2] = {11, 13};
+  int32_t shape[2] = {19, 21};
   int32_t blockshape[2] = {11, 13};
-  int isize = (int)(shape[0] * shape[1]);
-  uint32_t data[isize];
-  memset(data, 0, isize * 4);
-  for (int i = 0; i < isize; i++) {
-    data[i] = 124557 * i;
-    if(i % 2 == 0) {
-      data[i] += 87654321;
-    }
-    if(i % 3 == 0) {
-      data[i] -= 87358362;
-    }
-  }
+  blosc2_frame *frame1 = blosc2_frame_from_file("/mnt/c/Users/sosca/CLionProjects/c-blosc2/examples/nomatchpad.cat");
+  blosc2_schunk *sc1 = blosc2_schunk_from_frame(frame1, false);
+  int isize = (int)(sc1->chunksize);
+  uint8_t *data = malloc(isize);
+  int err = blosc2_schunk_decompress_chunk(sc1, 0, data, isize);
 
   /* Run the test. */
-  int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  int result = test_ndlz(data, isize, 4, ndim, blockshape);
   return result;
 }
 
@@ -171,31 +163,29 @@ int all_elem_eq() {
   int ndim = 2;
   int32_t shape[2] = {64, 64};
   int32_t blockshape[2] = {32, 32};
-  int isize = (int)(shape[0] * shape[1]);
-  uint32_t data[isize];
-  memset(data, 0, isize * 4);
-  for (int i = 0; i < isize; i++) {
-    data[i] = 0;
-  }
+  blosc2_frame *frame3 = blosc2_frame_from_file("/mnt/c/Users/sosca/CLionProjects/c-blosc2/examples/alleq1.cat");
+  blosc2_schunk *sc3 = blosc2_schunk_from_frame(frame3, false);
+  int isize = (int)(sc3->chunksize);
+  uint8_t *data = malloc(isize);
+  int err = blosc2_schunk_decompress_chunk(sc3, 0, data, isize);
 
   /* Run the test. */
-  int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  int result = test_ndlz(data, isize, 4, ndim, blockshape);
   return result;
 }
 
 int all_elem_pad() {
   int ndim = 2;
   int32_t shape[2] = {29, 31};
-  int32_t blockshape[2] = {22, 24};
-  int isize = (int)(shape[0] * shape[1]);
-  uint32_t data[isize];
-  memset(data, 0, isize * 4);
-  for (int i = 0; i < isize; i++) {
-    data[i] = 0;
-  }
+  int32_t blockshape[2] = {12, 14};
+  blosc2_frame *frame4 = blosc2_frame_from_file("/mnt/c/Users/sosca/CLionProjects/c-blosc2/examples/alleqpad.cat");
+  blosc2_schunk *sc4 = blosc2_schunk_from_frame(frame4, false);
+  int isize = (int)(sc4->chunksize);
+  uint8_t *data = malloc(isize);
+  int err = blosc2_schunk_decompress_chunk(sc4, 0, data, isize);
 
   /* Run the test. */
-  int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  int result = test_ndlz(data, isize, 4, ndim, blockshape);
   return result;
 }
 
@@ -203,18 +193,14 @@ int same_cells() {
   int ndim = 2;
   int32_t shape[2] = {32, 32};
   int32_t blockshape[2] = {25, 23};
-  int isize = (int)(shape[0] * shape[1]);
-  uint32_t data[isize];
-  memset(data, 0, isize * 4);
-  for (int i = 0; i < isize; i += 4) {
-    data[i] = 0;
-    data[i + 1] = 1111111;
-    data[i + 2] = 2;
-    data[i + 3] = 1111111;
-  }
+  blosc2_frame *frame5 = blosc2_frame_from_file("/mnt/c/Users/sosca/CLionProjects/c-blosc2/examples/samecells.cat");
+  blosc2_schunk *sc5 = blosc2_schunk_from_frame(frame5, false);
+  int isize = (int)(sc5->chunksize);
+  uint8_t *data = malloc(isize);
+  int err = blosc2_schunk_decompress_chunk(sc5, 0, data, isize);
 
   /* Run the test. */
-  int result = test_ndlz(data, 4 * isize, 4, ndim, blockshape);
+  int result = test_ndlz(data, isize, 4, ndim, blockshape);
   return result;
 }
 
@@ -404,6 +390,7 @@ int main(void) {
   printf("all_elem_pad: %d obtained \n \n", result);
   result = same_cells();
   printf("same_cells: %d obtained \n \n", result);
+  /*
   result = same_cells_pad();
   printf("same_cells_pad: %d obtained \n \n", result);
   result = some_matches();
@@ -425,5 +412,5 @@ int main(void) {
   printf("image5 with padding: %d obtained \n \n", result);
   result = image6();
   printf("image6 with padding: %d obtained \n \n", result);
-
+*/
 }

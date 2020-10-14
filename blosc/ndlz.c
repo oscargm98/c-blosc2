@@ -64,14 +64,14 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   int ndim = context->ndim;  // the number of dimensions of the block
   int32_t* blockshape = context->blockshape;  // the shape of block
 
-  if(length == context->leftover) {
-    printf("\n Leftover block is not supported %d - %d \n", length, context->leftover);
+  if (length == context->leftover) {
+    printf("\n Leftover block is not supported \n", length, context->leftover);
     return 0;
   }
 
   if (length != (blockshape[0] * blockshape[1])) {
     printf("\n length %d, size %d \n", length, (blockshape[0] * blockshape[1]));
-    printf("Length not equal to shape");
+    printf("Length not equal to blocksize \n");
     return -1;
   }
 
@@ -275,7 +275,6 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
                     }
                   }
                   offset = (uint16_t) (anchor - obase - hrcoup[hval]);
-                  free(buffer2);
                 } else {
                   same = false;
                   if (j - i == 1) {
@@ -326,7 +325,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
 
       }
       if((op - obase) > length) {
-        printf("op-ob %u, len %u", op-obase, length);
+        //printf("Compressed data is bigger than input! \n", op-obase, length);
         return 0;
       }
       //printf("token %u, pad [%u, %u] \n", token, padding[0], padding[1]);
@@ -405,7 +404,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
   uint8_t ndim;
   uint32_t blockshape[2];
   uint32_t eshape[2];
-  uint8_t* buffercpy;
+  uint8_t* buffercpy = malloc(16 * sizeof(uint8_t));
   uint8_t token;
   if (NDLZ_UNEXPECT_CONDITIONAL(length <= 0)) {
     return 0;
