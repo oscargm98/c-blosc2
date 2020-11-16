@@ -77,18 +77,18 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
   uint8_t* op = (uint8_t *) output;
   uint8_t* op_limit;
   uint32_t hval, hash_cell;
-  uint32_t hash_3[2] = {0};
-  uint32_t hash_2[3] = {0};
+  uint32_t hash_triple[2] = {0};
+  uint32_t hash_pair[3] = {0};
   uint8_t bufarea[16];
   uint8_t* buf_cell = bufarea;
-  uint8_t buf_3[12] = {0};
-  uint8_t buf_2[8] = {0};
+  uint8_t buf_triple[12];
+  uint8_t buf_pair[8];
   uint8_t* buf_aux;
   uint32_t tab_cell[1U << 12U] = {0};
-  uint32_t tab_3h[1U << 12U] = {0};
-  uint32_t tab_2[1U << 12U] = {0};
-  uint32_t update_3[2] = {0};
-  uint32_t update_2[3] = {0};
+  uint32_t tab_triple[1U << 12U] = {0};
+  uint32_t tab_pair[1U << 12U] = {0};
+  uint32_t update_triple[2] = {0};
+  uint32_t update_pair[3] = {0};
 
   // Minimum cratios before issuing and _early giveup_
   // Remind that ndlz is not meant for cratios <= 2 (too costly to decompress)
@@ -129,10 +129,10 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
       // int ncell = ii[1] + ii[0] * (shape[1] / 4);
       uint8_t token;
       for (int h = 0; h < 2; h++){
-        update_3[h] = 0;
-        update_2[h] = 0;
+        update_triple[h] = 0;
+        update_pair[h] = 0;
       }
-      update_2[2] = 0;
+      update_pair[2] = 0;
 
       uint32_t orig = ii[0] * 4 * blockshape[1] + ii[1] * 4;
       if (((blockshape[0] % 4 != 0) && (ii[0] == i_stop[0] - 1)) || ((blockshape[1] % 4 != 0) && (ii[1] == i_stop[1] - 1))) {
@@ -217,34 +217,34 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
 
           // three rows
           for(int i = 0; i < 2; i++) {
-            memcpy(buf_3, &buf_cell[i * 4], 4);
+            memcpy(buf_triple, &buf_cell[i * 4], 4);
             for (int j = i + 1; j < 3; j++) {
-              memcpy(&buf_3[4], &buf_cell[j * 4], 4);
+              memcpy(&buf_triple[4], &buf_cell[j * 4], 4);
               for (int k = j + 1; k < 4; k++) {
-                memcpy(&buf_3[8], &buf_cell[k * 4], 4);
-                hval = XXH32(buf_3, 12, 1);        // calculate trio hash
+                memcpy(&buf_triple[8], &buf_cell[k * 4], 4);
+                hval = XXH32(buf_triple, 12, 1);        // calculate triple hash
                 hval >>= 32U - 12U;
                 /* calculate distance to the match */
                 bool same = true;
                 uint16_t offset;
-                if (tab_3[hval] != 0) {
-                  buf_aux = obase + tab_3[hval];
+                if (tab_triple[hval] != 0) {
+                  buf_aux = obase + tab_triple[hval];
                   for (int l = 0; l < 12; l++) {
-                   // printf("bufthr[i]: %u, buf2: %u \n", buf_3[l], buf_aux[l]);
-                    if (buf_3[l] != buf_aux[l]) {
+                   // printf("bufthr[i]: %u, bufaux: %u \n", buf_triple[l], buf_aux[l]);
+                    if (buf_triple[l] != buf_aux[l]) {
                       same = false;
                       break;
                     }
                   }
-                  offset = (uint16_t) (anchor - obase - tab_3[hval]);
+                  offset = (uint16_t) (anchor - obase - tab_triple[hval]);
                 } else {
                   same = false;
                   if ((j - i == 1) && (k - j == 1)) {
-                    update_3[i] = (uint32_t) (anchor + 1 + i * 4 - obase);     /* update hash table */
-                    hash_3[i] = hval;
+                    update_triple[i] = (uint32_t) (anchor + 1 + i * 4 - obase);     /* update hash table */
+                    hash_triple[i] = hval;
                   }
                 }
-                ref = obase + tab_3[hval];
+                ref = obase + tab_triple[hval];
 
                 if (same) {
                   distance = (int32_t) (anchor - i * 4 - ref);
@@ -265,7 +265,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
                     if ((l != i) && (l != j) && (l != k)) {
                       memcpy(op, &buf_cell[4 * l], 4);
                       op += 4;
-                      goto match_3;
+                      goto match_triple;
                     }
                   }
                 }
@@ -273,34 +273,34 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
             }
           }
 
-          match_3:
+          match_triple:
           if (literal) {
-            // rows couples
+            // rows pairs
             for(int i = 0; i < 3; i++) {
-              memcpy(buf_2, &buf_cell[i * 4], 4);
+              memcpy(buf_pair, &buf_cell[i * 4], 4);
               for (int j = i + 1; j < 4; j++) {
-                memcpy(&buf_2[4], &buf_cell[j * 4], 4);
-                hval = XXH32(buf_2, 8, 1);        // calculate couple hash
+                memcpy(&buf_pair[4], &buf_cell[j * 4], 4);
+                hval = XXH32(buf_pair, 8, 1);        // calculate rows pair hash
                 hval >>= 32U - 12U;
-                ref = obase + tab_2[hval];
+                ref = obase + tab_pair[hval];
                 /* calculate distance to the match */
                 bool same = true;
                 uint16_t offset;
-                if (tab_2[hval] != 0) {
-                  buf_aux = obase + tab_2[hval];
+                if (tab_pair[hval] != 0) {
+                  buf_aux = obase + tab_pair[hval];
                   for(int k = 0; k < 8; k++){
-               //     printf("bufcoup[i]: %u, buf2: %u \n", buf_2[k], buf_aux[k]);
-                    if(buf_2[k] != buf_aux[k]) {
+               //     printf("buf_pair[i]: %u, buf_aux: %u \n", buf_pair[k], buf_aux[k]);
+                    if(buf_pair[k] != buf_aux[k]) {
                       same = false;
                       break;
                     }
                   }
-                  offset = (uint16_t) (anchor - obase - tab_2[hval]);
+                  offset = (uint16_t) (anchor - obase - tab_pair[hval]);
                 } else {
                   same = false;
                   if (j - i == 1) {
-                    update_2[i] = (uint32_t) (anchor + 1 + i * 4 - obase);     /* update hash table */
-                    hash_2[i] = hval;
+                    update_pair[i] = (uint32_t) (anchor + 1 + i * 4 - obase);     /* update hash table */
+                    hash_pair[i] = hval;
                   }
                 }
                 if (same) {
@@ -308,7 +308,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
                 } else {
                   distance = 0;
                 }
-                if ((distance != 0) && (distance < MAX_DISTANCE)) {     /* 2 rows match */
+                if ((distance != 0) && (distance < MAX_DISTANCE)) {     /* rows pair match */
                   literal = false;
                   bool second_match = false;
                   if (i == 0) {                 // search for second match
@@ -322,17 +322,17 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
                         }
                       }
                     }
-                    memcpy(buf_2, &buf_cell[l * 4], 4);
-                    memcpy(&buf_2[4], &buf_cell[m * 4], 4);
-                    hval = XXH32(buf_2, 8, 1);        // calculate couple hash
+                    memcpy(buf_pair, &buf_cell[l * 4], 4);
+                    memcpy(&buf_pair[4], &buf_cell[m * 4], 4);
+                    hval = XXH32(buf_pair, 8, 1);        // calculate rows pair hash
                     hval >>= 32U - 12U;
-                    ref = obase + tab_2[hval];
+                    ref = obase + tab_pair[hval];
                     same = true;
-                    if (tab_2[hval] != 0) {
-                      buf_aux = obase + tab_2[hval];
+                    if (tab_pair[hval] != 0) {
+                      buf_aux = obase + tab_pair[hval];
                       for (k = 0; k < 8; k++) {
-                        //     printf("bufcoup[i]: %u, buf2: %u \n", buf_2[k], buf_aux[k]);
-                        if (buf_2[k] != buf_aux[k]) {
+                        //     printf("buf_pair[i]: %u, buf_aux: %u \n", buf_pair[k], buf_aux[k]);
+                        if (buf_pair[k] != buf_aux[k]) {
                           same = false;
                           break;
                         }
@@ -345,18 +345,18 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
                     } else {
                       distance = 0;
                     }
-                    if ((distance != 0) && (distance < MAX_DISTANCE)) {   /* 2 couple matches */
+                    if ((distance != 0) && (distance < MAX_DISTANCE)) {   /* 2 pair matches */
                       second_match = true;
                       token = (uint8_t) ((1U << 5U) | (j << 3U));
                       *op++ = token;
-                      uint16_t offset_2 = (uint16_t) (anchor - obase - tab_2[hval]);
+                      uint16_t offset_2 = (uint16_t) (anchor - obase - tab_pair[hval]);
                       *(uint16_t*) op = offset;
                       op += sizeof(offset);
                       *(uint16_t*) op = offset_2;
                       op += sizeof(offset_2);
                     }
                   }
-                  if (! second_match) {                          /* only one couple match */
+                  if (! second_match) {                          /* only one pair match */
                     if (i == 2) {
                       token = (uint8_t) (1U << 7U);
                     } else {
@@ -372,23 +372,23 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
                       }
                     }
                   }
-                  goto match_couple;
+                  goto match_pair;
                 }
               }
             }
           }
 
-          match_couple:
+          match_pair:
           if (literal) {
             tab_cell[hash_cell] = (uint32_t) (anchor + 1 - obase);     /* update hash tables */
-            if (update_3[0] != 0) {
+            if (update_triple[0] != 0) {
               for (int h = 0; h < 2; h++) {
-                tab_3[hash_3[h]] = update_3[h];
+                tab_triple[hash_triple[h]] = update_triple[h];
               }
             }
-            if (update_2[0] != 0) {
+            if (update_pair[0] != 0) {
               for (int h = 0; h < 3; h++) {
-                tab_2[hash_2[h]] = update_2[h];
+                tab_pair[hash_pair[h]] = update_pair[h];
               }
             }
             token = 0;
@@ -573,7 +573,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
           }
         }
 
-      } else if ((token >= 128) && (token <= 191)){ // rows couple match
+      } else if ((token >= 128) && (token <= 191)){ // rows pair match
         buffercpy = local_buffer;
         uint16_t offset = *((uint16_t*) ip);
         offset += 3;
@@ -594,7 +594,7 @@ int ndlz_decompress(const void* input, int length, void* output, int maxout) {
             ip += 4;
           }
         }
-      } else if ((token >= 40) && (token <= 63)) {  // 2 rows couple matches
+      } else if ((token >= 40) && (token <= 63)) {  // 2 rows pair matches
         buffercpy = local_buffer;
         uint16_t offset_1 = *((uint16_t*) ip);
         offset_1 += 5;
