@@ -29,6 +29,7 @@
 #include "trunc-prec.h"
 #include "blosclz.h"
 #include "btune.h"
+#include "ndlz.h"
 
 #if defined(HAVE_LZ4)
   #include "lz4.h"
