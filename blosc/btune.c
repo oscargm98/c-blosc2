@@ -1,7 +1,7 @@
 /*********************************************************************
   Blosc - Blocked Shuffling and Compression Library
 
-  Author: Francesc Alted <francesc@blosc.org>
+  Author: The Blosc Developers <blosc@blosc.org>
   Creation date: 2017-08-29
 
   See LICENSE.txt for details about copyright and rights to use.
@@ -102,7 +102,7 @@ void btune_next_blocksize(blosc2_context *context) {
   }
 
   /* Now the blocksize for splittable codecs */
-  if (clevel > 0 && split_block(context->compcode, typesize, blocksize, true)) {
+  if (clevel > 0 && split_block(context, typesize, blocksize, true)) {
     // For performance reasons, do not exceed 256 KB (in must fit in L2 cache)
     switch (clevel) {
       case 1:

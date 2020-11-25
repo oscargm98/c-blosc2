@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015  Francesc Alted
+  Copyright (C) 2020 The Blosc Developers
   http://blosc.org
   License: BSD (see LICENSE.txt)
 
@@ -37,7 +37,8 @@ int main(void) {
   cparams.compcode = BLOSC_BLOSCLZ;
   cparams.clevel = 5;
   cparams.nthreads = NTHREADS;
-  schunk = blosc2_new_schunk(cparams, dparams, NULL);
+  blosc2_storage storage = {.cparams=&cparams, .dparams=&dparams};
+  schunk = blosc2_schunk_new(storage);
 
   for (int nchunk = 0; nchunk < NCHUNKS; nchunk++) {
     for (int i = 0; i < SIZE; i++) {
@@ -70,7 +71,7 @@ int main(void) {
   }
 
   /* Free resources */
-  blosc2_free_schunk(schunk);
+  blosc2_schunk_free(schunk);
   /* Destroy the Blosc environment */
   blosc_destroy();
 

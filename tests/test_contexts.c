@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015  Francesc Alted
+  Copyright (C) 2020 The Blosc Developers
   http://blosc.org
   License: BSD (see LICENSE.txt)
 
@@ -44,7 +44,8 @@ int main(void) {
   cctx = blosc2_create_cctx(cparams);
 
   /* Compress with clevel=5 and shuffle active  */
-  csize = blosc2_compress_ctx(cctx, isize, data, data_out, osize);
+  csize = blosc2_compress_ctx(cctx, data, isize, data_out, osize);
+  blosc2_free_ctx(cctx);
   if (csize == 0) {
     printf("Buffer is uncompressible.  Giving up.\n");
     return EXIT_FAILURE;
@@ -58,21 +59,24 @@ int main(void) {
   dparams.nthreads = NTHREADS;
   dctx = blosc2_create_dctx(dparams);
 
-  ret = blosc2_getitem_ctx(dctx, data_out, 5, 5, data_subset);
+  ret = blosc2_getitem_ctx(dctx, data_out, csize, 5, 5, data_subset);
   if (ret < 0) {
     printf("Error in blosc2_getitem_ctx().  Giving up.\n");
+    blosc2_free_ctx(dctx);
     return EXIT_FAILURE;
   }
 
   for (i = 0; i < 5; i++) {
     if (data_subset[i] != data_subset_ref[i]) {
       printf("blosc2_getitem_ctx() fetched data differs from original!\n");
+      blosc2_free_ctx(dctx);
       return EXIT_FAILURE;
     }
   }
 
   /* Decompress  */
-  dsize = blosc2_decompress_ctx(dctx, data_out, data_dest, (size_t)dsize);
+  dsize = blosc2_decompress_ctx(dctx, data_out, csize, data_dest, (size_t)dsize);
+  blosc2_free_ctx(dctx);
   if (dsize < 0) {
     printf("Decompression error.  Error code: %d\n", dsize);
     return EXIT_FAILURE;
@@ -84,10 +88,6 @@ int main(void) {
       return EXIT_FAILURE;
     }
   }
-
-  /* Free resources */
-  blosc2_free_ctx(cctx);
-  blosc2_free_ctx(dctx);
 
   return EXIT_SUCCESS;
 }

@@ -1,7 +1,21 @@
 Blosc Chunk Format
 ==================
 
-Blosc (as of Version 1.0.0) has the following 16 byte header that stores
+The chunk is composed of a header and a blocks section::
+
+    +---------+--------+---------+
+    |  header | blocks | trailer |
+    +---------+--------+---------+
+
+These three sections are described below.
+
+*Note:* All integer types are stored in little endian.
+
+
+Header
+------
+
+Blosc (as of version 1.0.0) has the following 16 byte header that stores
 information about the compressed chunk::
 
     |-0-|-1-|-2-|-3-|-4-|-5-|-6-|-7-|-8-|-9-|-A-|-B-|-C-|-D-|-E-|-F-|
@@ -12,24 +26,14 @@ information about the compressed chunk::
       |   +----------versionlz
       +--------------version
 
-In addition, starting in Blosc 2.0.0, there is an extension of the header
-above that allows to encode the filter pipeline::
+Starting in Blosc 2.0.0, there is an extension of the header above that allows
+for encoding blocks with a filter pipeline::
 
   1+|-0-|-1-|-2-|-3-|-4-|-5-|-6-|-7-|-8-|-9-|-A-|-B-|-C-|-D-|-E-|-F-|
     |     filter codes      |   ^   |     filter meta       | ^ | ^ |
                                 |                             |   |
                                 +-reserved                    |   +-blosc2_flags
                                                               +-reserved
-
-So there is a complete byte for encoding the filter and another one to encode
-possible metadata associated with the filter.  The filter pipeline has 6
-reserved slots for the filters to be applied sequentially to the chunk.  The
-filters are applied sequentially following the slot number in increasing order.
-
-Datatypes of the Header Entries
--------------------------------
-
-All entries are little endian.
 
 :version:
     (``uint8``) Blosc format version.
@@ -49,7 +53,7 @@ All entries are little endian.
     :bit 3 (``0x08``):
         Whether the delta codec has been applied or not.
     :bit 4 (``0x10``):
-        If set, the blocks are *not* split in sub-blocks.
+        If set, blocks are *not* split into multiple compressed data streams.
     :bit 5 (``0x20``):
         Part of the enumeration for compressors.
     :bit 6 (``0x40``):
@@ -60,8 +64,7 @@ All entries are little endian.
     Note:: If both bit 0 and bit 2 are both set, that means that an
         extended header (see above) is used.
 
-    The last three bits form an enumeration that allows to use alternative
-    compressors.
+    The last three bits form an enumeration that allows for the use of alternative compressors.
 
     :``0``:
         ``blosclz``
@@ -84,13 +87,38 @@ All entries are little endian.
     (``uint8``) Number of bytes for the atomic type.
 
 :nbytes:
-    (``uint32``) Uncompressed size of the buffer.
+    (``int32``) Uncompressed size of the buffer (this header is not included).
 
 :blocksize:
-    (``uint32``) Size of internal blocks.
+    (``int32``) Size of internal blocks.
 
 :cbytes:
-    (``uint32``) Compressed size of the buffer.
+    (``int32``) Compressed size of the buffer (including this header).
+
+:filter_codes:
+    (``uint8``) Filter code.
+
+    :``0``:
+        No shuffle (for compatibility with Blosc1).
+    :``0``:
+        No filter.
+    :``1``:
+        Byte-wise shuffle.
+    :``2``:
+        Bit-wise shuffle.
+    :``3``:
+        Delta filter.
+    :``4``:
+        Truncate precision filter.
+
+    The filter pipeline has 6 reserved slots for the filters. They are applied sequentially to the chunk according
+    to their index in increasing order. The type of filter applied is specified by the `filter_code`. Each
+    `filter_code` has an associated field in `filter_meta` that can contain metadata about the filter.
+
+:filter_meta:
+    (``uint8``) Filter metadata.
+
+    Possible metadata associated with a filter code.
 
 :blosc2_flags:
     (``bitfield``) The flags for a Blosc2 buffer.
@@ -98,7 +126,112 @@ All entries are little endian.
     :bit 0 (``0x01``):
         Whether the codec uses dictionaries or not.
     :bit 1 (``0x02``):
-        Whether the header is extended with +32 bytes coming right after this byte. 
+        Whether the header is extended with +32 bytes coming right after this byte.
     :bit 2 (``0x04``):
-        Whether the codec is stored in a byte previous to this compressed buffer or it is in the global `flags` for chunk. 
-        
+        Whether the codec is stored in a byte previous to this compressed buffer
+        or it is in the global `flags` for chunk.
+    :bit 3 (``0x08``):
+        Whether the chunk is 'lazy' or not.  A lazy chunk has the header and bstarts
+        in place, but not the actual block data.  In addition, they have an additional
+        trailer for making it easy to read the data blocks.  In general, lazy chunks
+        appear when reading data from disk.
+
+
+Blocks
+------
+
+The blocks section is composed of a list of offsets to the start of each block, an optional dictionary to aid in
+compression, and finally a list of compressed data streams::
+
+    +=========+======+=========+
+    | bstarts | dict | streams |
+    +=========+======+=========+
+
+Each block is equal-sized as specified by the `blocksize` header field. The size of the last block that can be shorter
+or equal to the rest.
+
+**Block starts**
+
+The *block starts* section contains a list of offsets `int32 bstarts` that indicate where each block starts in the
+chunk. These offsets are relative to the start of the chunk and point to the start of one or more compressed
+data streams containing the contents of the block::
+
+    +=========+=========+========+=========+
+    | bstart0 | bstart1 |   ...  | bstartN |
+    +=========+=========+========+=========+
+
+**Dictionary (optional)**
+
+*Only for C-Blosc2*
+
+Dictionaries are small datasets that are known to be repeated a lot and can help to compress data in blocks better.
+The dictionary section contains the size of the dictionary `int32 dsize` followed by the dictionary data::
+
+    +=======+=================+
+    | dsize | dictionary data |
+    +=======+=================+
+
+**Compressed Data Streams**
+
+Compressed data streams are the compressed set of bytes that are passed to codecs for decompression. Each compressed
+data stream is stored with the size of the stream `int32 csize` preceeding the bytes for the stream::
+
+    +=======+=======+
+    | csize | cdata |
+    +=======+=======+
+
+If bit 4 of the `flags` header field is set, each block is stored in a single data stream::
+
+    +=========+
+    | stream0 |
+    +=========+
+    | block0  |
+    +=========+
+
+If bit 4 of the `flags` header is *not* set, each block can be stored using multiple data streams::
+
+    +=========+=========+=========+=========+
+    | stream0 | stream1 |    ...  | streamN |
+    +=========+=========+=========+=========+
+    | block0                                |
+    +=========+=========+=========+=========+
+
+The uncompressed size for each block is equivalent to the `blocksize` field in the header, with the exception
+of the last block which may be equal to or less than the `blocksize`.
+
+**Run-Length Encoding**
+
+*Only for C-Blosc2*
+
+The `csize` field of each compressed data stream can be used to support run-length encoding for blocks as follows:
+
+    - When the most significant bit is *not* set, `csize` represents the size of the compressed
+      data stream that follows. (as in C-Blosc1)
+    - When the most significant bit is set, the lowest significant byte of `csize` is used to fill the entire
+      block.
+
+For example, a csize of 10000 means that the compressed data stream that follows is 10000 bytes long
+and a csize of -32 means that the whole block is made of bytes with a value of 32.
+
+Trailer
+-------
+
+This is an optional section, mainly for lazy chunks use.  A lazy chunk is similar to a regular one, except that
+only the meta-information has been loaded.  The actual data from blocks is 'lazily' only loaded on demand.
+This allows for improved selectivity, and hence less input bandwidth demands, during partial chunk reads
+(e.g. `blosc_getitem`) from data that is on disk.
+
+Here it is its structure::
+
+    +=========+=========+========+========+=========+
+    | nchunk  | offset  | bsize0 |   ...  | bsizeN |
+    +=========+=========+========+========+=========+
+
+:nchunk:
+    (``int32_t``) The number of the chunk in the super-chunk.
+
+:offset:
+    (``int64_t``) The offset of the chunk in the frame (sequential super-chunk).
+
+:bsize0 .. bsizeN:
+    (``int32_t``) The sizes in bytes for every block.

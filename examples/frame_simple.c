@@ -61,7 +61,8 @@ int main(void) {
   cparams.nthreads = NTHREADS;
   blosc2_dparams dparams = BLOSC2_DPARAMS_DEFAULTS;
   dparams.nthreads = NTHREADS;
-  blosc2_schunk* schunk = blosc2_new_schunk(cparams, dparams, NULL);
+  blosc2_storage storage = {.cparams=&cparams, .dparams=&dparams};
+  blosc2_schunk* schunk = blosc2_schunk_new(storage);
 
   // Add some data
   blosc_set_timestamp(&last);
@@ -74,10 +75,11 @@ int main(void) {
   }
 
   // Add some usermeta data
-  int umlen = blosc2_update_usermeta(schunk, (uint8_t *) "This is a usermeta content...", 32,
+  int umlen = blosc2_update_usermeta(schunk, (uint8_t *) "This is a usermeta content.....", 32,
                                      BLOSC2_CPARAMS_DEFAULTS);
   if (umlen < 0) {
     printf("Cannot write usermeta chunk");
+    return -1;
   }
 
   /* Gather some info */
@@ -98,13 +100,24 @@ int main(void) {
 
   // super-chunk -> frame1 (in-memory)
   blosc_set_timestamp(&last);
-  blosc2_frame* frame1 = blosc2_new_frame(NULL);
-  int64_t frame_len = blosc2_schunk_to_frame(schunk, frame1);
+  blosc2_frame* frame1 = blosc2_frame_new(NULL);
+  int64_t frame_len = blosc2_frame_from_schunk(schunk, frame1);
   blosc_set_timestamp(&current);
   ttotal = blosc_elapsed_secs(last, current);
   printf("Time for schunk -> frame: %.3g s, %.1f MB/s\n",
          ttotal, nbytes / (ttotal * MB));
   printf("Frame length in memory: %ld bytes\n", (long)frame_len);
+
+  // super-chunk -> sframe (in-memory, sequential)
+  blosc_set_timestamp(&last);
+  uint8_t* sframe;
+  int64_t sframe_len = blosc2_schunk_to_sframe(schunk, &sframe);
+  blosc_set_timestamp(&current);
+  ttotal = blosc_elapsed_secs(last, current);
+  printf("Time for schunk -> sframe: %.3g s, %.1f MB/s\n",
+         ttotal, sframe_len / (ttotal * MB));
+  printf("sframe length in memory: %ld bytes\n", (long)sframe_len);
+  free(sframe);
 
   // frame1 (in-memory) -> fileframe (on-disk)
   blosc_set_timestamp(&last);
@@ -128,10 +141,10 @@ int main(void) {
 
   // frame1 (in-memory) -> schunk
   blosc_set_timestamp(&last);
-  // The next creates a schunk made of sparse chunks
-  blosc2_schunk* schunk1 = blosc2_schunk_from_frame(frame1, true);
+  // The next creates a schunk made of sequential chunks
+  blosc2_schunk* schunk1 = blosc2_frame_to_schunk(frame1, true);
   // The next creates a frame-backed schunk
-  // blosc2_schunk* schunk1 = blosc2_schunk_from_frame(frame1, false);
+  // blosc2_schunk* schunk1 = blosc2_frame_to_schunk(frame1, false);
   if (schunk1 == NULL) {
     printf("Bad conversion frame1 -> schunk1!\n");
     return -1;
@@ -143,10 +156,10 @@ int main(void) {
 
   // frame2 (on-disk) -> schunk
   blosc_set_timestamp(&last);
-  // The next creates an schunk made of sparse chunks
-  // blosc2_schunk* schunk2 = blosc2_schunk_from_frame(frame2, true);
+  // The next creates an schunk made of sequential chunks
+  // blosc2_schunk* schunk2 = blosc2_frame_to_schunk(frame2, true);
   // The next creates a frame-backed schunk
-  blosc2_schunk* schunk2 = blosc2_schunk_from_frame(frame2, false);
+  blosc2_schunk* schunk2 = blosc2_frame_to_schunk(frame2, false);
   if (schunk2 == NULL) {
     printf("Bad conversion frame2 -> schunk2!\n");
     return -1;
@@ -185,11 +198,11 @@ int main(void) {
   free(usermeta);
 
   /* Free resources */
-  blosc2_free_schunk(schunk);
-  blosc2_free_schunk(schunk1);
-  blosc2_free_schunk(schunk2);
-  blosc2_free_frame(frame1);
-  blosc2_free_frame(frame2);
+  blosc2_schunk_free(schunk);
+  blosc2_schunk_free(schunk1);
+  blosc2_schunk_free(schunk2);
+  blosc2_frame_free(frame1);
+  //blosc2_frame_free(frame2);
 
   return 0;
 }

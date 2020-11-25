@@ -9,6 +9,8 @@
 #       build the shared library version of the Blosc library
 #   BUILD_TESTS: default ON
 #       build test programs and generates the "test" target
+#   BUILD_FUZZERS: default ON
+#       build fuzz programs and generates "fuzz" targets
 #   BUILD_BENCHMARKS: default ON
 #       build the benchmark programs
 #   BUILD_EXAMPLES: default ON
@@ -97,6 +99,8 @@ option(BUILD_SHARED
     "Build a shared library version of the blosc library." ON)
 option(BUILD_TESTS
     "Build test programs form the blosc compression library" ON)
+option(BUILD_FUZZERS
+    "Build fuzzer programs from the blosc compression library" ${BUILD_STATIC})
 option(BUILD_BENCHMARKS
     "Build benchmark programs form the blosc compression library" ON)
 option(BUILD_EXAMPLES
@@ -114,7 +118,7 @@ option(DEACTIVATE_ZLIB
 option(DEACTIVATE_ZSTD
     "Do not include support for the ZSTD library." OFF)
 option(DEACTIVATE_IPP
-    "Do not include support for the Intel IPP library." OFF)
+    "Do not include support for the Intel IPP library." ON)
 option(PREFER_EXTERNAL_LZ4
     "Find and use external LZ4 library instead of included sources." OFF)
 option(PREFER_EXTERNAL_LIZARD
@@ -361,6 +365,14 @@ if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
     add_subdirectory(compat)
+endif()
+
+if(BUILD_FUZZERS)
+    if(NOT BUILD_STATIC)
+        message(FATAL_ERROR "BUILD_FUZZERS requires BUILD_STATIC to be enabled.")
+    endif()
+    enable_testing()
+    add_subdirectory(tests/fuzz)
 endif()
 
 if(BUILD_BENCHMARKS)

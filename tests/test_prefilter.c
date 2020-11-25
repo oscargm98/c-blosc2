@@ -10,7 +10,7 @@
 int tests_run = 0;
 
 #define SIZE 500 * 1000
-#define NTHREADS 1
+#define NTHREADS 2
 
 typedef struct {
     int ninputs;
@@ -24,10 +24,12 @@ blosc2_dparams dparams;
 blosc2_context *cctx, *dctx;
 static int32_t data[SIZE];
 static int32_t data2[SIZE];
-static int32_t data_out[SIZE];
+static int32_t data_out[SIZE + BLOSC_MAX_OVERHEAD / sizeof(int32_t)];
 static int32_t data_dest[SIZE];
-size_t isize = SIZE * sizeof(int32_t), osize = SIZE * sizeof(int32_t);
-int dsize = SIZE * sizeof(int32_t), csize;
+size_t isize = SIZE * sizeof(int32_t);
+size_t osize = SIZE * sizeof(int32_t) + BLOSC_MAX_OVERHEAD;
+int dsize = SIZE * sizeof(int32_t);
+int csize;
 
 
 int prefilter_func(blosc2_prefilter_params *pparams) {
@@ -66,17 +68,14 @@ static char *test_prefilter1(void) {
   cparams.pparams = &pparams;
   cctx = blosc2_create_cctx(cparams);
 
-  csize = blosc2_compress_ctx(cctx, isize, data, data_out, osize);
-  mu_assert("Buffer is uncompressible", csize != 0);
+  csize = blosc2_compress_ctx(cctx, data, isize, data_out, osize);
   mu_assert("Compression error", csize > 0);
 
   /* Create a context for decompression */
-  dparams = BLOSC2_DPARAMS_DEFAULTS;
-  dparams.nthreads = NTHREADS;
   dctx = blosc2_create_dctx(dparams);
 
   /* Decompress  */
-  dsize = blosc2_decompress_ctx(dctx, data_out, data_dest, (size_t)dsize);
+  dsize = blosc2_decompress_ctx(dctx, data_out, csize, data_dest, (size_t)dsize);
   mu_assert("Decompression error", dsize > 0);
 
   for (int i = 0; i < SIZE; i++) {
@@ -106,22 +105,20 @@ static char *test_prefilter2(void) {
   cparams.pparams = &pparams;
   cctx = blosc2_create_cctx(cparams);
 
-  csize = blosc2_compress_ctx(cctx, isize, data, data_out, osize);
+  csize = blosc2_compress_ctx(cctx, data, isize, data_out, osize);
   mu_assert("Buffer is uncompressible", csize != 0);
   mu_assert("Compression error", csize > 0);
 
   /* Create a context for decompression */
-  dparams = BLOSC2_DPARAMS_DEFAULTS;
-  dparams.nthreads = NTHREADS;
   dctx = blosc2_create_dctx(dparams);
 
   /* Decompress  */
-  dsize = blosc2_decompress_ctx(dctx, data_out, data_dest, (size_t)dsize);
+  dsize = blosc2_decompress_ctx(dctx, data_out, csize, data_dest, (size_t)dsize);
   mu_assert("Decompression error", dsize > 0);
 
   for (int i = 0; i < SIZE; i++) {
     if ((data[i] + data2[i]) != data_dest[i]) {
-      printf("Error en pos '%d': (%d + %d) != %d\n", i, data[i], data2[i], data_dest[i]);
+      printf("Error in pos '%d': (%d + %d) != %d\n", i, data[i], data2[i], data_dest[i]);
     }
     mu_assert("Decompressed data differs from original!", (data[i] + data2[i]) == data_dest[i]);
   }
@@ -135,7 +132,26 @@ static char *test_prefilter2(void) {
 
 
 static char *all_tests(void) {
+  // Check with an assortment of clevels and nthreads
+  cparams.clevel = 0;
+  cparams.nthreads = 1;
+  dparams.nthreads = NTHREADS;
   mu_run_test(test_prefilter1);
+  cparams.clevel = 1;
+  cparams.nthreads = 1;
+  mu_run_test(test_prefilter1);
+  cparams.clevel = 7;
+  cparams.nthreads = NTHREADS;
+  mu_run_test(test_prefilter1);
+  cparams.clevel = 0;
+  cparams.nthreads = NTHREADS;
+  dparams.nthreads = 1;
+  mu_run_test(test_prefilter2);
+  cparams.clevel = 5;
+  cparams.nthreads = 1;
+  mu_run_test(test_prefilter2);
+  cparams.clevel = 9;
+  cparams.nthreads = NTHREADS;
   mu_run_test(test_prefilter2);
 
   return 0;
@@ -156,8 +172,7 @@ int main(void) {
   cparams.typesize = sizeof(int32_t);
   cparams.compcode = BLOSC_BLOSCLZ;
   cparams.filters[BLOSC2_MAX_FILTERS - 1] = BLOSC_SHUFFLE;
-  cparams.clevel = 5;
-  cparams.nthreads = NTHREADS;
+  dparams = BLOSC2_DPARAMS_DEFAULTS;
 
   /* Run all the suite */
   char* result = all_tests();
