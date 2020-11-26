@@ -19,9 +19,9 @@
 #define XXH_NAMESPACE ndlz
 
 #define XXH_INLINE_ALL
-#include "xxhash.c"
+#include <xxhash.c>
 #include <stdio.h>
-#include "ndlz.h"
+#include <ndlz.h>
 
 
 
@@ -220,6 +220,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
           bool literal = true;
 
           // 2 rows pairs matches
+
           for (int j = 1; j < 4; j++) {
             memcpy(buf_pair, buf_cell, 4);
             memcpy(&buf_pair[4], &buf_cell[j * 4], 4);
@@ -439,7 +440,7 @@ int ndlz_compress(blosc2_context* context, const void* input, int length,
         printf("Compressed data is bigger than input! \n");
         return 0;
       }
-   //   printf("\n token %u, pad [%u, %u] \n", token, padding[0], padding[1]);
+   //g   printf("\n token %u, pad [%u, %u] \n", token, padding[0], padding[1]);
     }
   }
 
