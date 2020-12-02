@@ -1,7 +1,7 @@
 /*********************************************************************
   Blosc - Blocked Shuffling and Compression Library
 
-  Author: Francesc Alted <francesc@blosc.org>
+  Author: The Blosc Developers <blosc@blosc.org>
 
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
@@ -10,7 +10,7 @@
  * @brief Blosc header file.
  *
  * This file contains Blosc public API and the structures needed to use it.
- * @author Francesc Alted <francesc@blosc.org>
+ * @author The Blosc Developers <blosc@blosc.org>
  */
 
 #ifndef BLOSC_H
@@ -85,8 +85,8 @@ enum {
    * Cannot be larger than 255
    */
   BLOSC_MIN_BUFFERSIZE = 128,
-  /** Minimum buffer size to be compressed
-   * Cannot be smaller than 66
+  /** Minimum buffer size to be compressed.
+   *  Cannot be smaller than 66.
    */
 };
 
@@ -220,6 +220,25 @@ enum {
   BLOSC_NDLZ_VERSION_FORMAT = 1,
 };
 
+
+/**
+ * @brief Offsets for fields in Blosc2 chunk header
+ */
+enum {
+    BLOSC2_CHUNK_VERSION = 0x0,       //!< the version for the chunk format
+    BLOSC2_CHUNK_VERSIONLZ = 0x1,     //!< the version for the format of internal codec
+    BLOSC2_CHUNK_FLAGS = 0x2,         //!< flags and codec info
+    BLOSC2_CHUNK_TYPESIZE = 0x3,      //!< (uint8) the number of bytes of the atomic type
+    BLOSC2_CHUNK_NBYTES = 0x4,        //!< (int32) uncompressed size of the buffer (this header is not included)
+    BLOSC2_CHUNK_BLOCKSIZE = 0x8,     //!< (int32) size of internal blocks
+    BLOSC2_CHUNK_CBYTES = 0xc,        //!< (int32) compressed size of the buffer (including this header)
+    BLOSC2_CHUNK_FILTER_CODES = 0x10, //!< the codecs for the filter pipeline (1 byte per code)
+    BLOSC2_CHUNK_FILTER_META = 0x18,  //!< meta info for the filter pipeline (1 byte per code)
+    BLOSC2_CHUNK_BLOSC2_FLAGS = 0x1F, //!< flags specific for Blosc2 functionality
+};
+
+
+
 /**
  * @brief Initialize the Blosc library environment.
  *
@@ -277,48 +296,9 @@ BLOSC_EXPORT void blosc_destroy(void);
  * buffer. A negative return value means that an internal error happened. This
  * should never happen. If you see this, please report it back
  * together with the buffer data causing this and compression settings.
-*/
-/*
- * Environment variables
- * _____________________
  *
- * *blosc_compress()* honors different environment variables to control
- * internal parameters without the need of doing that programatically.
- * Here are the ones supported:
- *
- * **BLOSC_CLEVEL=(INTEGER)**: This will overwrite the @p clevel parameter
- * before the compression process starts.
- *
- * **BLOSC_SHUFFLE=[NOSHUFFLE | SHUFFLE | BITSHUFFLE]**: This will
- * overwrite the *doshuffle* parameter before the compression process
- * starts.
- *
- * **BLOSC_DELTA=(1|0)**: This will call *blosc_set_delta()^* before the
- * compression process starts.
- *
- * **BLOSC_TYPESIZE=(INTEGER)**: This will overwrite the *typesize*
- * parameter before the compression process starts.
- *
- * **BLOSC_COMPRESSOR=[BLOSCLZ | LZ4 | LZ4HC | LIZARD | ZLIB | ZSTD | NDLZ]**:
- * This will call *blosc_set_compressor(BLOSC_COMPRESSOR)* before the
- * compression process starts.
- *
- * **BLOSC_NTHREADS=(INTEGER)**: This will call
- * *blosc_set_nthreads(BLOSC_NTHREADS)* before the compression process
- * starts.
- *
- * **BLOSC_BLOCKSIZE=(INTEGER)**: This will call
- * *blosc_set_blocksize(BLOSC_BLOCKSIZE)* before the compression process
- * starts.  *NOTE:* The blocksize is a critical parameter with
- * important restrictions in the allowed values, so use this with care.
- *
- * **BLOSC_NOLOCK=(ANY VALUE)**: This will call *blosc2_compress_ctx()* under
- * the hood, with the *compressor*, *blocksize* and
- * *numinternalthreads* parameters set to the same as the last calls to
- * *blosc_set_compressor*, *blosc_set_blocksize* and
- * *blosc_set_nthreads*. *BLOSC_CLEVEL*, *BLOSC_SHUFFLE*, *BLOSC_DELTA* and
- * *BLOSC_TYPESIZE* environment vars will also be honored.
- *
+ * This function supports all the configuration based environment variables
+ * available in blosc2_compress.
  */
 BLOSC_EXPORT int blosc_compress(int clevel, int doshuffle, size_t typesize,
                                 size_t nbytes, const void* src, void* dest,
@@ -347,23 +327,9 @@ BLOSC_EXPORT int blosc_compress(int clevel, int doshuffle, size_t typesize,
  * If an error occurs, e.g. the compressed data is corrupted or the
  * output buffer is not large enough, then 0 (zero) or a negative value
  * will be returned instead.
-*/
-/*
- * Environment variables
- * _____________________
  *
- * *blosc_decompress* honors different environment variables to control
- * internal parameters without the need of doing that programatically.
- * Here are the ones supported:
- *
- * **BLOSC_NTHREADS=(INTEGER)**: This will call
- * *blosc_set_nthreads(BLOSC_NTHREADS)* before the proper decompression
- * process starts.
- *
- * **BLOSC_NOLOCK=(ANY VALUE)**: This will call *blosc2_decompress_ctx*
- * under the hood, with the *numinternalthreads* parameter set to the
- * same value as the last call to *blosc_set_nthreads*.
- *
+ * This function supports all the configuration based environment variables
+ * available in blosc2_decompress.
  */
 BLOSC_EXPORT int blosc_decompress(const void* src, void* dest, size_t destsize);
 
@@ -549,6 +515,22 @@ BLOSC_EXPORT int blosc_free_resources(void);
 BLOSC_EXPORT void blosc_cbuffer_sizes(const void* cbuffer, size_t* nbytes,
                                       size_t* cbytes, size_t* blocksize);
 
+/**
+ * @brief Checks that the compressed buffer starting at @cbuffer of length @cbytes may
+ * contain valid blosc compressed data, and that it is safe to call
+ * blosc_decompress/blosc_decompress_ctx/blosc_getitem.
+ * On success, returns 0 and sets @nbytes to the size of the uncompressed data.
+ * This does not guarantee that the decompression function won't return an error,
+ * but does guarantee that it is safe to attempt decompression.
+ *
+ * @param cbuffer The buffer of compressed data.
+ * @param cbytes The number of compressed bytes.
+ * @param nbytes The pointer where the number of uncompressed bytes will be put.
+ *
+ * @return On failure, returns -1.
+ */
+BLOSC_EXPORT int blosc_cbuffer_validate(const void* cbuffer, size_t cbytes,
+                                         size_t* nbytes);
 
 /**
  * @brief Get information about a compressed buffer, namely the type size
@@ -619,7 +601,7 @@ typedef struct {
   int32_t out_offset; // offset to reach the start of the output buffer
   int32_t tid;  // thread id
   uint8_t *ttmp;  // a temporary that is able to hold several blocks for the output and is private for each thread
-  int32_t ttmp_nbytes;  // the size of the temporary in bytes
+  size_t ttmp_nbytes;  // the size of the temporary in bytes
   blosc2_context *ctx;  // the decompression context
 } blosc2_prefilter_params;
 
@@ -664,7 +646,6 @@ typedef struct {
   int32_t* blockshape;
   //!< The shape of a block (NULL). Pointer to an array of ndim ints.
 } blosc2_cparams;
-
 
 /**
  * @brief Default struct for compression params meant for user initialization.
@@ -740,6 +721,133 @@ BLOSC_EXPORT void blosc2_free_ctx(blosc2_context* context);
  *
  */
 BLOSC_EXPORT int blosc2_set_maskout(blosc2_context *ctx, bool *maskout, int nblocks);
+/**
+ * @brief Compress a block of data in the @p src buffer and returns the size of
+ * compressed block.
+ *
+ * @remark Compression is memory safe and guaranteed not to write @p dest
+ * more than what is specified in @p destsize.
+ * There is not a minimum for @p src buffer size @p nbytes.
+ *
+ * @warning The @p src buffer and the @p dest buffer can not overlap.
+ *
+ * @param clevel The desired compression level and must be a number
+ * between 0 (no compression) and 9 (maximum compression).
+ * @param doshuffle Specifies whether the shuffle compression preconditioner
+ * should be applied or not. @a BLOSC_NOFILTER means not applying filters,
+ * @a BLOSC_SHUFFLE means applying shuffle at a byte level and
+ * @a BLOSC_BITSHUFFLE at a bit level (slower but *may* achieve better
+ * compression).
+ * @param typesize Is the number of bytes for the atomic type in binary
+ * @p src buffer.  This is mainly useful for the shuffle preconditioner.
+ * For implementation reasons, only a 1 < typesize < 256 will allow the
+ * shuffle filter to work.  When typesize is not in this range, shuffle
+ * will be silently disabled.
+ * @param src The buffer containing the data to compress.
+ * @param srcsize The number of bytes to compress in the @p src buffer.
+ * @param dest The buffer where the compressed data will be put,
+ * must have at least the size of @p destsize.
+ * @param destsize The size of the dest buffer. Blosc
+ * guarantees that if you set @p destsize to, at least,
+ * (@p nbytes + @a BLOSC_MAX_OVERHEAD), the compression will always succeed.
+ *
+ * @return The number of bytes compressed.
+ * If @p src buffer cannot be compressed into @p destsize, the return
+ * value is zero and you should discard the contents of the @p dest
+ * buffer. A negative return value means that an internal error happened. This
+ * should never happen. If you see this, please report it back
+ * together with the buffer data causing this and compression settings.
+*/
+/*
+ * Environment variables
+ * _____________________
+ *
+ * *blosc_compress()* honors different environment variables to control
+ * internal parameters without the need of doing that programatically.
+ * Here are the ones supported:
+ *
+ * **BLOSC_CLEVEL=(INTEGER)**: This will overwrite the @p clevel parameter
+ * before the compression process starts.
+ *
+ * **BLOSC_SHUFFLE=[NOSHUFFLE | SHUFFLE | BITSHUFFLE]**: This will
+ * overwrite the *doshuffle* parameter before the compression process
+ * starts.
+ *
+ * **BLOSC_DELTA=(1|0)**: This will call *blosc_set_delta()^* before the
+ * compression process starts.
+ *
+ * **BLOSC_TYPESIZE=(INTEGER)**: This will overwrite the *typesize*
+ * parameter before the compression process starts.
+ *
+ * **BLOSC_COMPRESSOR=[BLOSCLZ | LZ4 | LZ4HC | LIZARD | SNAPPY | ZLIB]**:
+ * This will call *blosc_set_compressor(BLOSC_COMPRESSOR)* before the
+ * compression process starts.
+ *
+ * **BLOSC_NTHREADS=(INTEGER)**: This will call
+ * *blosc_set_nthreads(BLOSC_NTHREADS)* before the compression process
+ * starts.
+ *
+ * **BLOSC_BLOCKSIZE=(INTEGER)**: This will call
+ * *blosc_set_blocksize(BLOSC_BLOCKSIZE)* before the compression process
+ * starts.  *NOTE:* The blocksize is a critical parameter with
+ * important restrictions in the allowed values, so use this with care.
+ *
+ * **BLOSC_NOLOCK=(ANY VALUE)**: This will call *blosc2_compress_ctx()* under
+ * the hood, with the *compressor*, *blocksize* and
+ * *numinternalthreads* parameters set to the same as the last calls to
+ * *blosc_set_compressor*, *blosc_set_blocksize* and
+ * *blosc_set_nthreads*. *BLOSC_CLEVEL*, *BLOSC_SHUFFLE*, *BLOSC_DELTA* and
+ * *BLOSC_TYPESIZE* environment vars will also be honored.
+ *
+ */
+BLOSC_EXPORT int blosc2_compress(int clevel, int doshuffle, int32_t typesize,
+                                 const void* src, int32_t srcsize, void* dest,
+                                 int32_t destsize);
+
+
+/**
+ * @brief Decompress a block of compressed data in @p src, put the result in
+ * @p dest and returns the size of the decompressed block.
+ *
+ * @warning The @p src buffer and the @p dest buffer can not overlap.
+ *
+ * @remark Decompression is memory safe and guaranteed not to write the @p dest
+ * buffer more than what is specified in @p destsize.
+ *
+ * @remark In case you want to keep under control the number of bytes read from
+ * source, you can call #blosc_cbuffer_sizes first to check whether the
+ * @p nbytes (i.e. the number of bytes to be read from @p src buffer by this
+ * function) in the compressed buffer is ok with you.
+ *
+ * @param src The buffer to be decompressed.
+ * @param srcsize The size of the buffer to be decompressed.
+ * @param dest The buffer where the decompressed data will be put.
+ * @param destsize The size of the @p dest buffer.
+ *
+ * @return The number of bytes decompressed.
+ * If an error occurs, e.g. the compressed data is corrupted or the
+ * output buffer is not large enough, then 0 (zero) or a negative value
+ * will be returned instead.
+*/
+/*
+ * Environment variables
+ * _____________________
+ *
+ * *blosc_decompress* honors different environment variables to control
+ * internal parameters without the need of doing that programatically.
+ * Here are the ones supported:
+ *
+ * **BLOSC_NTHREADS=(INTEGER)**: This will call
+ * *blosc_set_nthreads(BLOSC_NTHREADS)* before the proper decompression
+ * process starts.
+ *
+ * **BLOSC_NOLOCK=(ANY VALUE)**: This will call *blosc2_decompress_ctx*
+ * under the hood, with the *numinternalthreads* parameter set to the
+ * same value as the last call to *blosc_set_nthreads*.
+ *
+ */
+BLOSC_EXPORT int blosc2_decompress(const void* src, int32_t srcsize,
+                                   void* dest, int32_t destsize);
 
 /**
  * @brief Context interface to Blosc compression. This does not require a call
@@ -750,6 +858,7 @@ BLOSC_EXPORT int blosc2_set_maskout(blosc2_context *ctx, bool *maskout, int nblo
  * @param context A blosc2_context struct with the different compression params.
  * @param nbytes The number of bytes to be compressed from the @p src buffer.
  * @param src The buffer containing the data to be compressed.
+ * @param srcsize The number of bytes to be compressed from the @p src buffer.
  * @param dest The buffer where the compressed data will be put.
  * @param destsize The size in bytes of the @p dest buffer.
  *
@@ -762,8 +871,8 @@ BLOSC_EXPORT int blosc2_set_maskout(blosc2_context *ctx, bool *maskout, int nblo
  * and compression settings.
  */
 BLOSC_EXPORT int blosc2_compress_ctx(
-        blosc2_context* context, size_t nbytes, const void* src, void* dest,
-        size_t destsize);
+        blosc2_context* context, const void* src, int32_t srcsize, void* dest,
+        int32_t destsize);
 
 
 /**
@@ -774,6 +883,7 @@ BLOSC_EXPORT int blosc2_compress_ctx(
  *
  * @param context The blosc2_context struct with the different compression params.
  * @param src The buffer of compressed data.
+ * @param srcsize The length of buffer of compressed data.
  * @param dest The buffer where the decompressed data will be put.
  * @param destsize The size in bytes of the @p dest buffer.
  *
@@ -798,19 +908,19 @@ BLOSC_EXPORT int blosc2_compress_ctx(
  * then 0 (zero) or a negative value will be returned instead.
  */
 BLOSC_EXPORT int blosc2_decompress_ctx(blosc2_context* context, const void* src,
-                                       void* dest, size_t destsize);
+                                       int32_t srcsize, void* dest, int32_t destsize);
 
 /**
  * @brief Context interface counterpart for #blosc_getitem.
  *
  * It uses similar parameters than the blosc_getitem() function plus a
- * @p context parameter.
+ * @p context parameter and @srcsize compressed buffer length parameter.
  *
  * @return The number of bytes copied to @p dest or a negative value if
  * some error happens.
  */
 BLOSC_EXPORT int blosc2_getitem_ctx(blosc2_context* context, const void* src,
-                                    int start, int nitems, void* dest);
+                                    int32_t srcsize, int start, int nitems, void* dest);
 
 
 /*********************************************************************
@@ -819,6 +929,29 @@ BLOSC_EXPORT int blosc2_getitem_ctx(blosc2_context* context, const void* src,
 
 #define BLOSC2_MAX_METALAYERS 16
 #define BLOSC2_METALAYER_NAME_MAXLEN 31
+
+/**
+ * @brief This struct is meant for holding storage parameters for a
+ * for a blosc2 container, allowing to specify, for example, how to interpret
+ * the contents included in the schunk.
+ */
+typedef struct {
+    bool sequential;
+    //!< Whether the chunks are sequential (frame) or sparse.
+    char* path;
+    //!< The path for persistent storage. If NULL, that means in-memory.
+    blosc2_cparams* cparams;
+    //!< The compression params when creating a schunk.
+    //!< If NULL, sensible defaults are used depending on the context.
+    blosc2_dparams* dparams;
+    //!< The decompression params when creating a schunk.
+    //!< If NULL, sensible defaults are used depending on the context.
+} blosc2_storage;
+
+/**
+ * @brief Default struct for #blosc2_storage meant for user initialization.
+ */
+static const blosc2_storage BLOSC2_STORAGE_DEFAULTS = {false, NULL, NULL, NULL};
 
 typedef struct {
   char* fname;             //!< The name of the file; if NULL, this is in-memory
@@ -873,6 +1006,8 @@ typedef struct blosc2_schunk {
   //!< Pointer to chunk data pointers buffer.
   size_t data_len;
   //!< Length of the chunk data pointers buffer.
+  blosc2_storage* storage;
+  //!< Pointer to storage info.
   blosc2_frame* frame;
   //!< Pointer to frame used as store for chunks.
   //!<uint8_t* ctx;
@@ -894,23 +1029,84 @@ typedef struct blosc2_schunk {
 /**
  * @brief Create a new super-chunk.
  *
- * @param cparams The compression parameters.
- * @param dparams The decompression parameters.
- * @param frame The frame to be used. NULL if not needed.
+ * @param storage The storage properties.
  *
- * @return The new super-chunk
+ * @remark In case that storage.path is not NULL, the data is stored
+ * on-disk.  If the data file(s) exist, they are *overwritten*.
+ *
+ * @return The new super-chunk.
  */
 BLOSC_EXPORT blosc2_schunk *
-blosc2_new_schunk(blosc2_cparams cparams, blosc2_dparams dparams, blosc2_frame *frame);
+blosc2_schunk_new(blosc2_storage storage);
+
+/**
+ * @brief Create a non-initialized super-chunk.
+ *
+ * @param nchunks The number of non-initialized chunks in the super-chunk.
+ * @param storage The storage properties.
+ *
+ * @remark In case that storage.path is not NULL, the data is stored
+ * on-disk.  If the data file(s) exist, they are *overwritten*.
+ *
+ * @return The new super-chunk.
+ */
+BLOSC_EXPORT blosc2_schunk *
+blosc2_schunk_empty(int nchunks, blosc2_storage storage);
+
+/**
+ * @brief Open an existing super-chunk that is on-disk (no copy is made).
+ *
+ * @param storage The storage properties of the source.
+ *
+ * @remark The storage.path must be not NULL and it should exist on-disk.
+ * New data or metadata can be appended or updated.
+ *
+ * @return The new super-chunk.
+ */
+BLOSC_EXPORT blosc2_schunk*
+blosc2_schunk_open(blosc2_storage storage);
+
+/**
+ * @brief Create a super-chunk out of an in-memory frame (no copy is made).
+ *
+ * @param sframe The buffer of the in-memory serialized frame.
+ *
+ * @remark The sframe passed will be owned by the super-chunk and will be
+ * automatically freed when blosc2_schunk_free() is called.  If the user
+ * frees it after the opening, bad things will happen.  Don't do that.
+ *
+ * @param len The length of buffer of the in-memory frame (in bytes).
+ *
+ * @return The new super-chunk.
+ */
+BLOSC_EXPORT blosc2_schunk*
+blosc2_schunk_open_sframe(uint8_t *sframe, int64_t len);
+
+/**
+ * @brief Create an in-memory frame out of a super-chunk.
+ *
+ * @param schunk The super-chunk to be serialized.
+ * @param sframe A pointer where the serialized frame will be returned.
+ *
+ * @remark A freshly allocated sframe is returned, so you can use it
+ * independently of what you do with the super-chunk later on.
+ *
+ * @return The length of the sframe.  If <= 0 this indicate an error.
+ */
+BLOSC_EXPORT int64_t blosc2_schunk_to_sframe(blosc2_schunk* schunk, uint8_t** sframe);
 
 /**
  * @brief Release resources from a super-chunk.
  *
  * @param schunk The super-chunk to be freed.
  *
- * @return 0 if succeeds.
+ * @remark All the memory resources attached to the super-frame are freed.
+ * If the super-chunk is on-disk, the data continues there for a later
+ * re-opening.
+ *
+ * @return 0 if success.
  */
-BLOSC_EXPORT int blosc2_free_schunk(blosc2_schunk *schunk);
+BLOSC_EXPORT int blosc2_schunk_free(blosc2_schunk *schunk);
 
 /**
  * @brief Append an existing @p chunk o a super-chunk.
@@ -925,6 +1121,35 @@ BLOSC_EXPORT int blosc2_free_schunk(blosc2_schunk *schunk);
  */
 BLOSC_EXPORT int blosc2_schunk_append_chunk(blosc2_schunk *schunk, uint8_t *chunk, bool copy);
 
+
+/**
+  * @brief Update a chunk at a specific position in a super-chunk.
+  *
+  * @param schunk The super-chunk where the chunk will be updated.
+  * @param nchunk The position where the chunk will be updated.
+  * @param chunk The new @p chunk. If an internal copy is made, the @p chunk can be reused or
+  * freed if desired.
+  * @param copy Whether the chunk should be copied internally or can be used as-is.
+  *
+  * @return The number of chunks in super-chunk. If some problem is
+  * detected, this number will be negative.
+  */
+BLOSC_EXPORT int blosc2_schunk_update_chunk(blosc2_schunk *schunk, int nchunk, uint8_t *chunk, bool copy);
+
+/**
+ * @brief Insert a chunk at a specific position in a super-chunk.
+ *
+ * @param schunk The super-chunk where the chunk will be appended.
+ * @param nchunk The position where the chunk will be inserted.
+ * @param chunk The @p chunk to insert. If an internal copy is made, the @p chunk can be reused or
+ * freed if desired.
+ * @param copy Whether the chunk should be copied internally or can be used as-is.
+ *
+ * @return The number of chunks in super-chunk. If some problem is
+ * detected, this number will be negative.
+ */
+BLOSC_EXPORT int blosc2_schunk_insert_chunk(blosc2_schunk *schunk, int nchunk, uint8_t *chunk, bool copy);
+
 /**
  * @brief Append a @p src data buffer to a super-chunk.
  *
@@ -935,7 +1160,7 @@ BLOSC_EXPORT int blosc2_schunk_append_chunk(blosc2_schunk *schunk, uint8_t *chun
  * @return The number of chunks in super-chunk. If some problem is
  * detected, this number will be negative.
  */
-BLOSC_EXPORT int blosc2_schunk_append_buffer(blosc2_schunk *schunk, void *src, size_t nbytes);
+BLOSC_EXPORT int blosc2_schunk_append_buffer(blosc2_schunk *schunk, void *src, int32_t nbytes);
 
 /**
  * @brief Decompress and return the @p nchunk chunk of a super-chunk.
@@ -951,10 +1176,10 @@ BLOSC_EXPORT int blosc2_schunk_append_buffer(blosc2_schunk *schunk, void *src, s
  * @warning You must make sure that you have space enough to store the
  * uncompressed data.
  *
- * @return The size of the decompressed chunk. If some problem is
+ * @return The size of the decompressed chunk or 0 if it is non-initialized. If some problem is
  * detected, a negative code is returned instead.
  */
-BLOSC_EXPORT int blosc2_schunk_decompress_chunk(blosc2_schunk *schunk, int nchunk, void *dest, size_t nbytes);
+BLOSC_EXPORT int blosc2_schunk_decompress_chunk(blosc2_schunk *schunk, int nchunk, void *dest, int32_t nbytes);
 
 /**
  * @brief Return a compressed chunk that is part of a super-chunk in the @p chunk parameter.
@@ -966,16 +1191,43 @@ BLOSC_EXPORT int blosc2_schunk_decompress_chunk(blosc2_schunk *schunk, int nchun
  * responsibility to free the chunk returned or not.
  *
  * @warning If the super-chunk is backed by a frame that is disk-based, a buffer is allocated for the
- * (compressed) chunk, and hence a free is needed. You can check if the chunk requires a free
- * with the @p needs_free parameter.
+ * (compressed) chunk, and hence a free is needed.
+ * You can check if the chunk requires a free with the @p needs_free parameter.
  * If the chunk does not need a free, it means that a pointer to the location in the super-chunk
  * (or the backing in-memory frame) is returned in the @p chunk parameter.
  *
- * @return The size of the (compressed) chunk. If some problem is detected, a negative code
- * is returned instead.
+ * @return The size of the (compressed) chunk or 0 if it is non-initialized. If some problem is
+ * detected, a negative code is returned instead.
  */
 BLOSC_EXPORT int blosc2_schunk_get_chunk(blosc2_schunk *schunk, int nchunk, uint8_t **chunk,
                                          bool *needs_free);
+
+/**
+ * @brief Return a (lazy) compressed chunk that is part of a super-chunk in the @p chunk parameter.
+ *
+ * @param schunk The super-chunk from where to extract a chunk.
+ * @param nchunk The chunk to be extracted (0 indexed).
+ * @param chunk The pointer to the (lazy) chunk of compressed data.
+ * @param needs_free The pointer to a boolean indicating if it is the user's
+ * responsibility to free the chunk returned or not.
+ *
+ * @note For disk-based frames, a lazy chunk is always returned.
+ *
+ * @warning Currently, a lazy chunk can only be used by #blosc2_decompress_ctx and #blosc2_getitem_ctx.
+ *
+ * @warning If the super-chunk is backed by a frame that is disk-based, a buffer is allocated for the
+ * (compressed) chunk, and hence a free is needed.
+ * You can check if the chunk requires a free with the @p needs_free parameter.
+ * If the chunk does not need a free, it means that a pointer to the location in the super-chunk
+ * (or the backing in-memory frame) is returned in the @p chunk parameter.  In this case the returned
+ * chunk is not lazy.
+ *
+ * @return The size of the (compressed) chunk or 0 if it is non-initialized. If some problem is
+ * detected, a negative code is returned instead.  Note that a lazy chunk is somewhat larger than
+ * a regular chunk because of the trailer section (for details see `README_CHUNK_FORMAT.rst`).
+ */
+BLOSC_EXPORT int blosc2_schunk_get_lazychunk(blosc2_schunk *schunk, int nchunk, uint8_t **chunk,
+                                             bool *needs_free);
 
 /**
  * @brief Return the @p cparams associated to a super-chunk.
@@ -1000,6 +1252,16 @@ BLOSC_EXPORT int blosc2_schunk_get_cparams(blosc2_schunk *schunk, blosc2_cparams
  * @return 0 if succeeds. Else a negative code is returned.
  */
 BLOSC_EXPORT int blosc2_schunk_get_dparams(blosc2_schunk *schunk, blosc2_dparams **dparams);
+
+/**
+ * @brief Reorder the chunk offsets of an existing super-chunk.
+ *
+ * @param schunk The super-chunk whose chunk offsets are to be reordered.
+ * @param offsets_order The new order of the chunk offsets.
+ *
+ * @return 0 if suceeds. Else a negative code is returned.
+ */
+BLOSC_EXPORT int blosc2_schunk_reorder_offsets(blosc2_schunk *schunk, int *offsets_order);
 
 
 /*********************************************************************
@@ -1099,86 +1361,6 @@ BLOSC_EXPORT int blosc2_get_usermeta(blosc2_schunk* schunk, uint8_t** content);
 
 
 /*********************************************************************
-  Frame related structures and functions.
-*********************************************************************/
-
-/**
- * @brief Create a new frame.
- *
- * @param fname The filename of the frame.  If not persistent, pass NULL.
- *
- * @return The new frame.
- */
-BLOSC_EXPORT blosc2_frame* blosc2_new_frame(const char* fname);
-
-/**
- * @brief Create a frame from a super-chunk.
- *
- * @param schunk The super-chunk from where the frame will be created.
- * @param frame The pointer for the frame that will be populated.
- *
- * If frame->fname is NULL, a frame is created in memory; else it is created
- * on disk.
- *
- * @return The size in bytes of the frame. If an error occurs it returns a negative value.
- */
-BLOSC_EXPORT int64_t blosc2_schunk_to_frame(blosc2_schunk* schunk, blosc2_frame* frame);
-
-/**
- * @brief Free all memory from a frame.
- *
- * @param frame The frame to be freed.
- *
- * @return 0 if succeeds.
- */
-BLOSC_EXPORT int blosc2_free_frame(blosc2_frame *frame);
-
-/**
- * @brief Write an in-memory frame out to a file.
- *
- * The frame used must be an in-memory frame, i.e. frame->fname == NULL.
- *
- * @param frame The frame to be written into a file.
- * @param fname The name of the file.
- *
- * @return The size of the frame.  If negative, an error happened (including
- * that the original frame is not in-memory).
- */
-BLOSC_EXPORT int64_t blosc2_frame_to_file(blosc2_frame *frame, const char *fname);
-
-/**
- * @brief Initialize a frame out of a file.
- *
- * @param fname The file name.
- *
- * @return The frame created from the file.
- */
-BLOSC_EXPORT blosc2_frame* blosc2_frame_from_file(const char *fname);
-
-/**
- * @brief Initialize a frame out of a serialized frame.
- *
- * @param buffer The buffer for the serialized frame.
- * @param len The length of buffer for the serialized frame.
- * @param copy Whether the serialized frame should be copied internally or not.
- *
- * @return The frame created from the serialized frame.
- */
-BLOSC_EXPORT blosc2_frame* blosc2_frame_from_sframe(uint8_t *sframe, int64_t len, bool copy);
-
-/**
- * @brief Create a super-chunk from a frame.
- *
- * @param frame The frame from which the super-chunk will be created.
- * @param copy If true, a new, sparse in-memory super-chunk is created.
- * Else, a frame-backed one is created (i.e. no copies are made)
- *
- * @return The super-chunk corresponding to the frame.
- */
-BLOSC_EXPORT blosc2_schunk* blosc2_schunk_from_frame(blosc2_frame* frame, bool copy);
-
-
-/*********************************************************************
   Time measurement utilities.
 *********************************************************************/
 
@@ -1250,6 +1432,89 @@ BLOSC_EXPORT void blosc_set_blocksize(size_t blocksize);
  * available (the default).
  */
 BLOSC_EXPORT void blosc_set_schunk(blosc2_schunk* schunk);
+
+
+/*********************************************************************
+  Frame struct related functions.
+  These are rather low-level and the blosc2_schunk interface is
+  recommended instead.
+*********************************************************************/
+
+/**
+ * @brief Create a new frame.
+ *
+ * @param fname The filename of the frame.  If not persistent, pass NULL.
+ *
+ * @return The new frame.
+ */
+BLOSC_EXPORT blosc2_frame* blosc2_frame_new(const char* fname);
+
+/**
+ * @brief Create a frame from a super-chunk.
+ *
+ * @param schunk The super-chunk from where the frame will be created.
+ * @param frame The pointer for the frame that will be populated.
+ *
+ * @note If frame->fname is NULL, a frame is created in-memory; else it is created
+ * on-disk.
+ *
+ * @return The size in bytes of the frame. If an error occurs it returns a negative value.
+ */
+BLOSC_EXPORT int64_t blosc2_frame_from_schunk(blosc2_schunk* schunk, blosc2_frame* frame);
+
+/**
+ * @brief Free all memory from a frame.
+ *
+ * @param frame The frame to be freed.
+ *
+ * @return 0 if succeeds.
+ */
+BLOSC_EXPORT int blosc2_frame_free(blosc2_frame *frame);
+
+/**
+ * @brief Write an in-memory frame out to a file.
+ *
+ * The frame used must be an in-memory frame, i.e. frame->fname == NULL.
+ *
+ * @param frame The frame to be written into a file.
+ * @param fname The name of the file.
+ *
+ * @return The size of the frame.  If negative, an error happened (including
+ * that the original frame is not in-memory).
+ */
+BLOSC_EXPORT int64_t blosc2_frame_to_file(blosc2_frame *frame, const char *fname);
+
+/**
+ * @brief Initialize a frame out of a file.
+ *
+ * @param fname The file name.
+ *
+ * @return The frame created from the file.
+ */
+BLOSC_EXPORT blosc2_frame* blosc2_frame_from_file(const char *fname);
+
+/**
+ * @brief Initialize a frame out of an in-memory serialized frame.
+ *
+ * @param buffer The buffer for the serialized frame.
+ * @param len The length of buffer for the serialized frame.
+ * @param copy Whether the serialized frame should be copied internally or not.
+ *
+ * @return The frame created from the serialized frame.
+ */
+BLOSC_EXPORT blosc2_frame* blosc2_frame_from_sframe(uint8_t *sframe, int64_t len, bool copy);
+
+/**
+ * @brief Create a super-chunk from a frame.
+ *
+ * @param frame The frame from which the super-chunk will be created.
+ * @param copy If true, a new, serialized in-memory frame is created
+ * internally to serve as storage for the super-chunk. Else, the
+ * super-chunk will be backed by the sframe (i.e. no copies are made).
+ *
+ * @return The super-chunk corresponding to the frame.
+ */
+BLOSC_EXPORT blosc2_schunk* blosc2_frame_to_schunk(blosc2_frame* frame, bool copy);
 
 
 #ifdef __cplusplus

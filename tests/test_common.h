@@ -4,7 +4,7 @@
   Unit tests for basic features in Blosc.
 
   Creation date: 2010-06-07
-  Author: Francesc Alted <francesc@blosc.org>
+  Author: The Blosc Developers <blosc@blosc.org>
 
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
@@ -163,6 +163,7 @@ static void dummy_threads_callback(void *callback_data, void (*dojob)(void *), i
   for (i = 0; i < numjobs; ++i)
     dojob(((char *) jobdata) + ((unsigned) i)*jobdata_elsize);
 }
+
 /* install the callback if environment variable BLOSC_TEST_CALLBACK="yes" */
 inline static void install_blosc_callback_test(void)
 {

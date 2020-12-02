@@ -1,7 +1,7 @@
 /*********************************************************************
   Blosc - Blocked Shuffling and Compression Library
 
-  Author: Francesc Alted <francesc@blosc.org>
+  Author: The Blosc Developers <blosc@blosc.org>
 
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define BLOSCLZ_VERSION_STRING "2.2.0"
+#define BLOSCLZ_VERSION_STRING "2.3.0"
 
 
 /**

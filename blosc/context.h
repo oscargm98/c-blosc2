@@ -1,7 +1,7 @@
 /*********************************************************************
   Blosc - Blocked Shuffling and Compression Library
 
-  Author: Francesc Alted <francesc@blosc.org>
+  Author: The Blosc Developers <blosc@blosc.org>
   Creation date: 2017-08-29
 
   See LICENSE.txt for details about copyright and rights to use.
@@ -37,8 +37,10 @@ struct blosc2_context_s {
   /* The source buffer */
   uint8_t* dest;
   /* The destination buffer */
-  uint8_t* header_flags;
+  uint8_t header_flags;
   /* Flags for header */
+  uint8_t blosc2_flags;
+  /* Flags specific for blosc2 */
   int32_t sourcesize;
   /* Number of bytes in source buffer */
   int32_t nblocks;
@@ -48,6 +50,8 @@ struct blosc2_context_s {
   int32_t blocksize;
   /* Length of the block in bytes */
   int32_t output_bytes;
+  /* Counter for the number of input bytes */
+  int32_t srcsize;
   /* Counter for the number of output bytes */
   int32_t destsize;
   /* Maximum size for destination buffer */
@@ -134,7 +138,7 @@ struct thread_context {
   uint8_t* tmp3;
   uint8_t* tmp4;
   int32_t tmp_blocksize; /* the blocksize for different temporaries */
-  int32_t tmp_nbytes;   /* keep track of how big the temporary buffers are */
+  size_t tmp_nbytes;   /* keep track of how big the temporary buffers are */
 #if defined(HAVE_ZSTD)
   /* The contexts for ZSTD */
   ZSTD_CCtx* zstd_cctx;
