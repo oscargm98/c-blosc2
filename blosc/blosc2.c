@@ -856,8 +856,29 @@ static int blosc_c(struct thread_context* thread_context, int32_t bsize,
     }
   #endif /* HAVE_ZSTD */
     else if (context->compcode == BLOSC_NDLZ) {
-      cbytes = ndlz_compress(context, _src + j * neblock,
-                             (int)neblock, dest, (int)maxout);
+      uint8_t* ndlz_out = malloc(maxout);
+      int32_t nbytes = ndlz_compress(context, _src + j * neblock,
+                                     (int)neblock, ndlz_out, (int)maxout);
+
+      if (nbytes == 0) {
+        nbytes = neblock;
+        memcpy(ndlz_out, _src + j * neblock, neblock);
+      }
+
+      void *hash_table = NULL;
+    #ifdef HAVE_IPP
+      hash_table = (void*)thread_context->lz4_hash_table;
+    #endif
+      cbytes = lz4_wrap_compress((char*)ndlz_out, (size_t)nbytes,
+                                 (char*)dest, (size_t)maxout, accel, hash_table);
+
+      if (cbytes == 0) {
+        if (nbytes == 0) {
+          *((uint16_t *) dest) += (uint16_t) -256;    // problem: uint is not unsigned?
+        }
+        cbytes = nbytes;
+        memcpy(dest, ndlz_out, neblock);
+      }
     }
 
     else {
@@ -1162,8 +1183,11 @@ static int blosc_d(
         return -5;    /* signals no decompression support */
       }
       else if (compformat == BLOSC_NDLZ_FORMAT) {
-        nbytes = ndlz_decompress(src, cbytes, _dest, (int)neblock);
-      }
+        uint8_t* lz4_out = malloc(neblock);
+        int32_t lz4_bytes = lz4_wrap_decompress((char*)src, (size_t)cbytes,
+                                                (char*)lz4_out, (size_t)neblock);
+
+        nbytes = ndlz_decompress(lz4_out, lz4_bytes, _dest, (int)lz4_bytes);      }
       else {
         // Unknown format
         return -3;
